@@ -1,6 +1,7 @@
 package omega
 
 import scala.math._
+import scala.util.Random
 
 object Utils {
   private def gcd_aux(a: Int, b: Int): Int = {
@@ -30,12 +31,20 @@ object Utils {
     if (a > 0) a / b
     else -((-a + b - 1) / b)
   }
-
+  
+  /* mod_hat and int_div are extracted from the C/C++ implementation of omega */
   def mod_hat(a: Int, b: Int): Int = {
     assert(b > 0)
     val r = a - b * int_div(a, b)
     if (r > -(r-b)) r - b
     else r
+  }
+  
+  /* mod_hat2 follows the description of original paper */
+  def mod_hat2(a: Int, b: Int): Int = {
+    assert(b > 0)
+    if (a % b > b / 2) a % b
+    else (a % b) - b
   }
 
   def removeByIdx[T](lst: List[T], idx: Int): List[T] = {
@@ -47,12 +56,18 @@ object Utils {
       case ((minv,mini), (x,i)) => if (ordering.lt(x,minv)) (x,i) else (minv, mini)
     })
   }
+
+  def newVar(): String = {
+    "x" + Random.nextInt(100).toString
+  }
 }
 
 import Utils._
 
 abstract class Constraint(coefficients: List[Int], vars: List[String])  {
   def normalize(): Option[Constraint]
+
+  def subst(x: String, term: (List[Int], List[String])): Constraint
 
   def toStringPartially(): String = {
     val s = coefficients.head.toString
@@ -131,7 +146,7 @@ case class EQ(coefficients: List[Int], vars: List[String])
     (coefs.map(_ * -1), vars)
   }
   
-  def subst(x: String, term: (List[Int], List[String])): EQ = {
+  override def subst(x: String, term: (List[Int], List[String])): EQ = {
     val (c, v)= _subst(x, term)
     EQ(c, v)
   }
@@ -156,7 +171,7 @@ case class GEQ(coefficients: List[Int], vars: List[String])
   
   override def toString(): String = { toStringPartially() + " >= 0" }
 
-  def subst(x: String, term: (List[Int], List[String])): GEQ = {
+  override def subst(x: String, term: (List[Int], List[String])): GEQ = {
     val (c, v) = _subst(x, term)
     GEQ(c, v)
   }
@@ -166,6 +181,11 @@ case class Problem(cs: List[Constraint]) {
 
   def getAllEqualities(): List[EQ] = {
     cs.filter(_.isInstanceOf[EQ]).asInstanceOf[List[EQ]]
+  }
+
+  def partition(): (List[EQ], List[GEQ]) = {
+    val (eqs, geqs) = cs.partition(_.isInstanceOf[EQ])
+    (eqs.asInstanceOf[List[EQ]], geqs.asInstanceOf[List[GEQ]])
   }
 
   /* A constraint is normalized if all coefficients are integers, and the
@@ -178,10 +198,17 @@ case class Problem(cs: List[Constraint]) {
     else { Some(Problem(newCs.map(_.get))) }
   }
   
-  def eliminateEqConstraints(): Problem = {
-    val eqs = getAllEqualities()
-    if (eqs.nonEmpty) {
-      val eq1 = eqs.head
+  def eliminateEQs(): Problem = {
+    val (eqs, geqs) = partition()
+    def eliminate(eqs: List[EQ], geqs: List[GEQ]) {
+      if (eqs.nonEmpty) {
+        val eq = eqs.head
+        //if exists some var with 1/-1 coef then subst all others
+        //  aux(eqs.tail.map(_.subst ...), geqs.map(_.subst ...))
+        //else find a smallest coef
+        //  
+      }
+      geqs
     }
     ???
   }
@@ -191,9 +218,12 @@ case class Problem(cs: List[Constraint]) {
 object Main extends App {
   println("Omega Test")
 
-  println("3 % 2 = " + Utils.mod_hat(3, 2))
-  println("5 % 2 = " + Utils.mod_hat(5, 2))
-  println("-5 % 2 = " + Utils.mod_hat(-5, 2))
+  println("3 mod_hat 2 = " + Utils.mod_hat(3, 2))
+  println("5 mod_hat 2 = " + Utils.mod_hat(5, 2))
+  println("-5 mod_hat 2 = " + Utils.mod_hat(-5, 2))
+
+  println("12 mod_hat 8 = " + Utils.mod_hat(12, 8))
+  println("12 mod_hat2 8 = " + Utils.mod_hat2(12, 8))
 
   println("3 / 2 = " + Utils.int_div(3, 2))
   println("5 / 2 = " + Utils.int_div(5, 2))

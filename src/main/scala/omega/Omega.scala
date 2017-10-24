@@ -36,7 +36,8 @@ object Utils {
   def mod_hat2(a: Int, b: Int): Int = {
     assert(b > 0)
     val r = a - b * int_div(a, b)
-    if (r > -(r-b)) r - b
+    //if (r > -(r-b)) r - b
+    if (r >= -(r-b)) r - b // a slightly change to make mod_hat behaves as the paper 
     else r
   }
   
@@ -57,8 +58,8 @@ object Utils {
     })
   }
 
-  def newVar(): String = {
-    "x" + Random.nextInt(100).toString
+  def generateNewVar(): String = {
+    "α_" + Random.nextInt(100).toString
   }
 }
 
@@ -84,6 +85,8 @@ abstract class Constraint(coefficients: List[Int], vars: List[String])  {
     coefficients(vars.indexOf(x))
   }
 
+  def getVarByIdx(i: Int): String = { vars(i) }
+
   def removeVar(x: String): (List[Int], List[String]) = {
     removeVarByIdx(vars.indexOf(x))
   }
@@ -107,7 +110,8 @@ abstract class Constraint(coefficients: List[Int], vars: List[String])  {
   
   // returns (value, index)
   def minCoef(): (Int, Int) = { 
-    minWithIndex(coefficients.tail)(Ordering.by((x:Int) => abs(x))) 
+    val (v, idx) = minWithIndex(coefficients.tail)(Ordering.by((x:Int) => abs(x))) 
+    (v, idx+1)
   }
 }
 
@@ -128,18 +132,20 @@ case class EQ(coefficients: List[Int], vars: List[String])
   
   override def toString(): String = { toStringPartially() + " = 0" }
   
+  // An atmoic variable which has coefficient of 1 or -1
+  // returns (index, var)
   def getFirstAtomicVar(): Option[(Int, String)] = {
-    for (((c,x), idx) <- (coefficients zip vars).zipWithIndex) {
-      if (abs(c) == 1) return Some((idx, x))
+    for (((c,x), idx) <- (coefficients.tail zip vars.tail).zipWithIndex) {
+      if (abs(c) == 1) return Some((idx+1, x))
     }
     return None
   }
 
-  def getEquationBy(x: String): (List[Int], List[String]) = {
-    getEquationBy(vars.indexOf(x))
+  def getEquation(x: String): (List[Int], List[String]) = {
+    getEquation(vars.indexOf(x))
   }
 
-  def getEquationBy(idx: Int): (List[Int], List[String]) = {
+  def getEquation(idx: Int): (List[Int], List[String]) = {
     assert(idx != 0)
     assert(abs(coefficients(idx)) == 1)
     val (coefs, vars) = removeVarByIdx(idx)
@@ -179,7 +185,7 @@ case class GEQ(coefficients: List[Int], vars: List[String])
 
 case class Problem(cs: List[Constraint]) {
 
-  def getAllEqualities(): List[EQ] = {
+  def getEqualities(): List[EQ] = {
     cs.filter(_.isInstanceOf[EQ]).asInstanceOf[List[EQ]]
   }
 
@@ -187,6 +193,8 @@ case class Problem(cs: List[Constraint]) {
     val (eqs, geqs) = cs.partition(_.isInstanceOf[EQ])
     (eqs.asInstanceOf[List[EQ]], geqs.asInstanceOf[List[GEQ]])
   }
+
+  override def toString(): String = { cs.mkString("\n") }
 
   /* A constraint is normalized if all coefficients are integers, and the
    * greatest common divisor of the coefficients (not including a_0) is 1.
@@ -202,17 +210,47 @@ case class Problem(cs: List[Constraint]) {
   
   def eliminateEQs(): Problem = {
     val (eqs, geqs) = partition()
-    def eliminate(eqs: List[EQ], geqs: List[GEQ]) {
+    def eliminate(eqs: List[EQ], geqs: List[GEQ]): List[Constraint] = {
       if (eqs.nonEmpty) {
         val eq = eqs.head
-        //if exists some var with 1/-1 coef then subst all others
-        //  aux(eqs.tail.map(_.subst ...), geqs.map(_.subst ...))
-        //else find a smallest coef
-        //  
+
+        println("current constraints:")
+        for (eq <- eqs) { println(s"  $eq") }
+
+        eq.getFirstAtomicVar match {
+          case None =>
+            val (ak, idx) = eq.minCoef
+            val xk = eq.getVarByIdx(idx)
+            val sign_ak = sign(ak)
+            val m = abs(ak) + 1
+            val v = generateNewVar
+            val (coefs, vars) = eq.removeVarByIdx(idx)
+            val newCoefs = coefs.map((c: Int) => sign_ak * (mod_hat2(c, m))) ++ List(-1*sign_ak*m)
+            val newVars = vars ++ List(v)
+            val substTerm = (newCoefs, newVars)
+            
+            /* Debug */
+            val substStr = EQ(newCoefs, newVars).toStringPartially
+            //println(s"choose ak: $ak, xk: $xk")
+            println(s"subst: $xk = $substStr")
+            /* Debug */
+
+            eliminate(eq.subst(xk, substTerm).normalize.get::eqs.tail.map(_.subst(xk, substTerm)),
+                      geqs.map(_.subst(xk, substTerm)))
+
+          case Some((idx, x)) =>
+            val term = eq.getEquation(idx)
+            /* Debug */
+            val substStr = EQ(term._1, term._2).toStringPartially
+            println(s"subst: $x = $substStr")
+            /* Debug */
+            
+            eliminate(eqs.tail.map(_.subst(x, term)), geqs.map(_.subst(x, term)))
+        }
       }
-      geqs
+      else { geqs }
     }
-    ???
+    Problem(eliminate(eqs, geqs))
   }
 
 }
@@ -220,24 +258,35 @@ case class Problem(cs: List[Constraint]) {
 object Main extends App {
   println("Omega Test")
 
-  println("3 mod_hat 2 = " + Utils.mod_hat(3, 2))
-  println("5 mod_hat 2 = " + Utils.mod_hat(5, 2))
-  println("-5 mod_hat 2 = " + Utils.mod_hat(-5, 2))
-
-  println("12 mod_hat 8 = " + Utils.mod_hat(12, 8))
-  println("12 mod_hat2 8 = " + Utils.mod_hat2(12, 8))
-
   println("3 / 2 = " + Utils.int_div(3, 2))
   println("5 / 2 = " + Utils.int_div(5, 2))
   println("-5 / 2 = " + Utils.int_div(-5, 2))
+
+  println("3 mod_hat2 2 = " + Utils.mod_hat2(3, 2))
+  println("5 mod_hat2 2 = " + Utils.mod_hat2(5, 2))
+  println("-5 mod_hat2 2 = " + Utils.mod_hat2(-5, 2))
+
+  println("12 mod_hat2 8 = " + Utils.mod_hat2(12, 8))
+  println("12 mod_hat 8 = " + Utils.mod_hat(12, 8))
+
+  ///////////////////////////////
 
   val eq1 = EQ(List(1, 2, -3), 
                List("_", "a", "b"))
   val eq2 = EQ(List(3, 1, 5),
                List("_", "b", "a"))
+  val p1 = Problem(List(eq2, eq1))
+  println(p1)
+  //val p1elim = p1.eliminateEQs
+  //println("after elimination: " + p1elim)
 
-  val cv = eq2.getEquationBy("b")
-  println(eq1.subst("b", cv))
+  ///////////////////////////////
+
+  val eq3 = EQ(List(-17, 7, 12, 31), List("_", "x", "y", "z"))
+  val eq4 = EQ(List(-7,  3, 5,  14), List("_", "x", "y", "z"))
+  val p2 = Problem(List(eq3, eq4))
+  println(p2)
+  val p2elim = p2.eliminateEQs
 }
 
 

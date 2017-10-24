@@ -60,10 +60,7 @@ object Utils {
       case ((minv,mini), (x,i)) => if (ordering.lt(x,minv)) (x,i) else (minv, mini)
     })
   }
-
-  def generateNewVar(): String = {
-    "α_" + Random.nextInt(100).toString
-  }
+  
 }
 
 import Utils._
@@ -202,6 +199,15 @@ case class GEQ(coefficients: List[Int], vars: List[String])
 }
 
 case class Problem(cs: List[Constraint]) {
+  var varIdx = 0
+  val greeks = List("α", "β", "γ", "δ", "ϵ", "ζ", "η", "θ", "ι", "κ", "λ", "μ",
+                    "ν", "ξ", "ο", "π", "ρ", "σ", "τ", "υ", "ϕ", "χ", "ψ", "ω")
+  def generateNewVar(): String = {
+    //"α_" + Random.nextInt(100).toString
+    val oldIdx = varIdx
+    varIdx += 1
+    greeks(oldIdx)
+  }
 
   def getEqualities(): List[EQ] = {
     cs.filter(_.isInstanceOf[EQ]).asInstanceOf[List[EQ]]

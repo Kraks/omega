@@ -4,6 +4,8 @@ import scala.math._
 import scala.util.Random
 
 object Utils {
+  val const = "_"
+
   private def gcd_aux(a: Int, b: Int): Int = {
     assert(a >= 0 && b >= 0)
     if (b == 0) a else gcd_aux(b, a % b)
@@ -81,6 +83,12 @@ abstract class Constraint(coefficients: List[Int], vars: List[String])  {
     })
   }
 
+  def removeZeroCoef(coefs: List[Int], vars: List[String]): (List[Int], List[String]) = {
+    val cvpairs = for ((c, v) <- (coefs zip vars) if !(c == 0 && v != const)) yield (c, v)
+    // TODO: refactor this to only use one pass
+    (cvpairs.map(_._1), cvpairs.map(_._2))
+  }
+
   def getCoefficient(x: String): Int = {
     coefficients(vars.indexOf(x))
   }
@@ -96,7 +104,8 @@ abstract class Constraint(coefficients: List[Int], vars: List[String])  {
     val newVars = removeByIdx(vars, idx)
     (newCoefs, newVars)
   }
-
+  
+  //TODO: rename this
   def _subst(x: String, term: (List[Int], List[String])): (List[Int], List[String]) = {
     val c = getCoefficient(x)
     val (oldCoefs, oldVars) = removeVar(x)
@@ -123,7 +132,10 @@ case class EQ(coefficients: List[Int], vars: List[String])
   override def normalize(): Option[EQ] = {
     val g = gcd(coefficients.tail)
     if (coefficients.head % g == 0) {
-      Some(EQ(coefficients.map(_ / g), vars))
+      val coefs = coefficients.map(_ / g)
+      // Also remove items whose coefficient is 0
+      val (newCoefs, newVars) = removeZeroCoef(coefs, vars)
+      Some(EQ(newCoefs, newVars))
     }
     // If the constant term a_0 can not be evenly divided by g, 
     // then there is no integer solution, returns None
@@ -164,15 +176,16 @@ case class GEQ(coefficients: List[Int], vars: List[String])
 
   override def normalize(): Option[GEQ] = {
     val g = gcd(coefficients.tail)
-    if (coefficients.head % g == 0) {
-      Some(GEQ(coefficients.map(_ / g), vars))
-    }
+    val coefs = if (coefficients.head % g == 0) { coefficients.map(_ / g) }
     // If the constant term a_0 can not be evenly divided by g,
     // then take floors of a_0/g, which tightens the inequality
     else {
       val a0 = floor(coefficients.head.toDouble / g).toInt
-      Some(GEQ(a0::coefficients.tail.map(_ / g), vars))
+      a0::coefficients.tail.map(_ / g)
     }
+    // Also remove items whose coefficient is 0
+    val (newCoefs, newVars) = removeZeroCoef(coefs, vars)
+    Some(GEQ(newCoefs, newVars))
   }
   
   override def toString(): String = { toStringPartially() + " >= 0" }
@@ -194,7 +207,7 @@ case class Problem(cs: List[Constraint]) {
     (eqs.asInstanceOf[List[EQ]], geqs.asInstanceOf[List[GEQ]])
   }
 
-  override def toString(): String = { cs.mkString("\n") }
+  override def toString(): String = { "{ " + cs.mkString("\n  ") + " }" }
 
   /* A constraint is normalized if all coefficients are integers, and the
    * greatest common divisor of the coefficients (not including a_0) is 1.
@@ -282,11 +295,12 @@ object Main extends App {
 
   ///////////////////////////////
 
-  val eq3 = EQ(List(-17, 7, 12, 31), List("_", "x", "y", "z"))
-  val eq4 = EQ(List(-7,  3, 5,  14), List("_", "x", "y", "z"))
-  val p2 = Problem(List(eq3, eq4))
+  val eq3 = EQ(List(-17, 7, 12, 31), List(const, "x", "y", "z"))
+  val eq4 = EQ(List(-7,  3, 5,  14), List(const, "x", "y", "z"))
+  val p2 = Problem(List(eq3, eq4)).normalize.get
   println(p2)
   val p2elim = p2.eliminateEQs
+  println(p2elim)
 }
 
 

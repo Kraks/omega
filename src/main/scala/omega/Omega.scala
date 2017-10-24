@@ -182,6 +182,7 @@ case class GEQ(coefficients: List[Int], vars: List[String])
     // If the constant term a_0 can not be evenly divided by g,
     // then take floors of a_0/g, which tightens the inequality
     else {
+      //val a0 = coefficients.head / g
       val a0 = floor(coefficients.head.toDouble / g).toInt
       a0::coefficients.tail.map(_ / g)
     }
@@ -202,6 +203,7 @@ case class Problem(cs: List[Constraint]) {
   var varIdx = 0
   val greeks = List("α", "β", "γ", "δ", "ϵ", "ζ", "η", "θ", "ι", "κ", "λ", "μ",
                     "ν", "ξ", "ο", "π", "ρ", "σ", "τ", "υ", "ϕ", "χ", "ψ", "ω")
+  //TODO: refactor this
   def generateNewVar(): String = {
     //"α_" + Random.nextInt(100).toString
     val oldIdx = varIdx

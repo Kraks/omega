@@ -32,16 +32,16 @@ object Utils {
     else -((-a + b - 1) / b)
   }
   
-  /* mod_hat and int_div are extracted from the C/C++ implementation of omega */
-  def mod_hat(a: Int, b: Int): Int = {
+  /* This version is extracted from the C/C++ implementation of omega */
+  def mod_hat2(a: Int, b: Int): Int = {
     assert(b > 0)
     val r = a - b * int_div(a, b)
     if (r > -(r-b)) r - b
     else r
   }
   
-  /* mod_hat2 follows the description of original paper */
-  def mod_hat2(a: Int, b: Int): Int = {
+  /* This version follows the description of original paper */
+  def mod_hat(a: Int, b: Int): Int = {
     assert(b > 0)
     if (a % b > b / 2) a % b
     else (a % b) - b
@@ -192,10 +192,12 @@ case class Problem(cs: List[Constraint]) {
    * greatest common divisor of the coefficients (not including a_0) is 1.
    */
   def normalize(): Option[Problem] = {
-    // TODO: refactor this
-    val newCs: List[Option[Constraint]] = cs.map(_.normalize)
-    if (newCs.exists(_ == None)) { None }
-    else { Some(Problem(newCs.map(_.get))) }
+    val newCs = for (c <- cs) yield 
+      c.normalize match {
+        case None => return None
+        case Some(c) => c
+      }
+    Some(Problem(newCs))
   }
   
   def eliminateEQs(): Problem = {

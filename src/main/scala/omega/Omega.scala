@@ -18,7 +18,8 @@ object Utils {
   }
 
   def gcd(ints: List[Int]): Int = {
-    if (ints.size < 1) 1
+    if (ints.size == 0) 1
+    else if (ints.size == 1) gcd(ints.head, ints.head)
     else ints.reduce((x, y) => gcd(x, y))
   }
 
@@ -76,10 +77,10 @@ abstract class Constraint(coefficients: List[Int], vars: List[String])  {
     val s = coefficients.head.toString
     (coefficients.tail zip vars.tail).foldLeft(s)({
       case (acc, (c,v)) => 
-      val cstr = if (c > 0) " + " + c.toString
-                 else " - " + abs(c).toString
-      val cvstr = cstr + v
-      acc + cvstr
+        val cstr = if (c > 0) " + " + c.toString
+                   else " - " + abs(c).toString
+        val cvstr = cstr + v
+        acc + cvstr
     })
   }
 
@@ -107,6 +108,9 @@ abstract class Constraint(coefficients: List[Int], vars: List[String])  {
   
   //TODO: rename this
   def _subst(x: String, term: (List[Int], List[String])): (List[Int], List[String]) = {
+    if (!vars.contains(x)) {
+      return (coefficients, vars)
+    }
     val c = getCoefficient(x)
     val (oldCoefs, oldVars) = removeVar(x)
     val newCoefs = term._1.map(_ * c)
@@ -173,8 +177,9 @@ case class EQ(coefficients: List[Int], vars: List[String])
 // Linear Inequality: \Sigma a_i x_i >= 0 where x_0 = 1
 case class GEQ(coefficients: List[Int], vars: List[String]) 
   extends Constraint(coefficients, vars) {
-
+  
   override def normalize(): Option[GEQ] = {
+    //TODO: may need to review this
     val g = gcd(coefficients.tail)
     val coefs = if (coefficients.head % g == 0) { coefficients.map(_ / g) }
     // If the constant term a_0 can not be evenly divided by g,
@@ -223,12 +228,12 @@ case class Problem(cs: List[Constraint]) {
   
   def eliminateEQs(): Problem = {
     val (eqs, geqs) = partition()
-    def eliminate(eqs: List[EQ], geqs: List[GEQ]): List[Constraint] = {
+    def eliminate(eqs: List[EQ], geqs: List[GEQ]): List[GEQ] = {
       if (eqs.nonEmpty) {
         val eq = eqs.head
 
         println("current constraints:")
-        for (eq <- eqs) { println(s"  $eq") }
+        for (eq <- (eqs++geqs)) { println(s"  $eq") }
 
         eq.getFirstAtomicVar match {
           case None =>
@@ -266,6 +271,10 @@ case class Problem(cs: List[Constraint]) {
     Problem(eliminate(eqs, geqs))
   }
 
+  def contradict(): Boolean = {
+    ???
+  }
+
 }
 
 object Main extends App {
@@ -301,6 +310,20 @@ object Main extends App {
   println(p2)
   val p2elim = p2.eliminateEQs
   println(p2elim)
-}
+  
+  val ineq1 = GEQ(List(-1, 1), List(const, "x"))
+  val ineq2 = GEQ(List(40, -1), List(const, "x"))
+  //println(ineq2.normalize.get)
+  val ineq3 = GEQ(List(50, 1), List(const, "y"))
+  val ineq4 = GEQ(List(50, -1), List(const, "y"))
+  val p3 = Problem(List(eq3, eq4, ineq1, ineq2, ineq3, ineq4))
+  println(p3)
+  val p3elim = p3.eliminateEQs.normalize.get
+  println(p3elim)
 
+  val ineq5 = GEQ(List(11, 13), List(const, "a")).normalize.get
+  println(ineq5)
+  val ineq6 = GEQ(List(28, -13), List(const, "a")).normalize.get
+  println(ineq6)
+}
 

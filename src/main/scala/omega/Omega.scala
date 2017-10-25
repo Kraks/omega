@@ -197,6 +197,18 @@ case class GEQ(coefficients: List[Int], vars: List[String])
     val (c, v) = _subst(x, term)
     GEQ(c, v)
   }
+
+  def contradict(that: GEQ): Boolean = {
+    val thisConst = coefficients.head
+    val thatConst = that.coefficients.head
+    val thisCoefs = coefficients.tail
+    val thatCoefs = that.coefficients.tail
+    //TODO: check zero coefs
+    vars == that.vars &&
+    (thisCoefs zip thatCoefs).foldLeft(true)({
+      case (b, (c1,c2)) => b && abs(c1) == abs(c2) && (sign(c1)+sign(c2)==0)
+    }) 
+  }
 }
 
 case class Problem(cs: List[Constraint]) {
@@ -333,5 +345,9 @@ object Main extends App {
   println(ineq5)
   val ineq6 = GEQ(List(28, -13), List(const, "a")).normalize.get
   println(ineq6)
+
+  val ineq7 = GEQ(List(-2, 3, 5), List(const, "x", "y"))
+  val ineq8 = GEQ(List(0, -3,-5), List(const, "x", "y"))
+  println(s"contradict: ${ineq7.contradict(ineq8)}")
 }
 

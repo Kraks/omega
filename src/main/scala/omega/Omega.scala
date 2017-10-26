@@ -215,14 +215,14 @@ case class GEQ(coefficients: List[Int], vars: List[String])
     //TODO: check zero coefs, zero ceofs should be eliminated before
     val thisConst = coefficients.head
     val thatConst = that.coefficients.head
-    val thisCoefs = coefficients.tail
-    val thatCoefs = that.coefficients.tail
+    val coefss = coefficients.tail zip that.coefficients.tail
     // variables of two inequalities should be the same
     vars == that.vars &&
     // coefficients of two inequalities should be additive inversed
-    (thisCoefs zip thatCoefs).foldLeft(true)({
-      case (b, (c1,c2)) => b && abs(c1) == abs(c2) && (sign(c1)+sign(c2)==0)
+    coefss.foldLeft(true)({
+      case (b, (c1,c2)) => b && abs(c1)==abs(c2) && (sign(c1)+sign(c2)==0)
     }) &&
+    // constant term should be consistant
     (-thisConst) > thatConst
   }
 }

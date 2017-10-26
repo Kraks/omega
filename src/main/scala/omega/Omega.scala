@@ -205,11 +205,11 @@ case class GEQ(coefficients: List[Int], vars: List[String])
     GEQ(c, v)
   }
 
-  def contradict(that: GEQ): Boolean = {
+  def contraWith(that: GEQ): Boolean = {
     /* Note:
-     * -2 + 2x + 3y >= 0,  0 - 2x - 3y >= 0 are contradictory, but
+     * -2 + 2x + 3y >= 0,  0 - 2x - 3y >= 0 are contraWithory, but
      *  0 + 2x + 3y >= 0,  2 - 2x - 3y >= 0 are not.
-     * -5 + 2x + 3y >= 0, -9 - 2x - 3y >= 0 are contradictory, but
+     * -5 + 2x + 3y >= 0, -9 - 2x - 3y >= 0 are contraWithory, but
      *  9 + 2x + 3y >= 0, -5 - 2x - 3y >= 0 are not.
      */
     //TODO: check zero coefs, zero ceofs should be eliminated before
@@ -234,6 +234,13 @@ case class GEQ(coefficients: List[Int], vars: List[String])
       })
     if (canMerge) Some(EQ(coefficients, vars))
     else None
+  }
+
+  //TODO: better rename this function
+  // If two inequalities can be simplified as one, then returns Some(c)
+  // Otherwise returns None
+  def redundant(that: GEQ): Option[GEQ] = {
+    ???
   }
 }
 
@@ -318,19 +325,27 @@ case class Problem(cs: List[Constraint]) {
     }
     Problem(eliminate(getEqs, getGeqs))
   }
-
-  def contradict(): Boolean = {
+  
+  def removeRedndAndContra(): Option[Problem] = {
     //This phrase should after equality elimination
     assert(getEqs.isEmpty)
+
+    val s = scala.collection.mutable.Set[Constraint]() //Use Set to remove identical items
     for (Seq(c1, c2) <- getGeqs.combinations(2)) { 
-      if (c1.contradict(c2)) return true 
+      if (c1.contraWith(c2)) return None
+      c1.redundant(c2) match {
+        case Some(c) => s += c
+        case None => s += c1 += c2
+      }
     }
-    false
+    
+    Some(Problem(s.toList))
   }
 
   def mergeTightIneqs(): Problem = {
     //This phrase should after equality elimination
     assert(getEqs.isEmpty)
+
     def merge(geqs: List[GEQ], acc: List[Constraint]): List[Constraint] = {
       if (geqs.isEmpty) acc
       else {
@@ -340,7 +355,7 @@ case class Problem(cs: List[Constraint]) {
             // TODO: continue merging or return immediately?
             case Some(c) => 
               println(s"tight: $geq, $other => $c")
-              println(s"removed: ${removeByIdx(geqs.tail, idx)}")
+              //println(s"removed: ${removeByIdx(geqs.tail, idx)}")
               return merge(removeByIdx(geqs.tail, idx), c::acc)
             case None => 
           }
@@ -348,6 +363,7 @@ case class Problem(cs: List[Constraint]) {
         merge(geqs.tail, geqs.head::acc)
       }
     }
+
     Problem(merge(getGeqs, List()))
   }
 
@@ -406,16 +422,16 @@ object Main extends App {
 
   val ineq7 = GEQ(List(-2, 3, 5), List(const, "x", "y"))
   val ineq8 = GEQ(List(0, -3,-5), List(const, "x", "y"))
-  println(s"contradict: ${ineq7.contradict(ineq8)}") //true
+  println(s"contraWith: ${ineq7.contraWith(ineq8)}") //true
 
-  println(s"contradict: ${GEQ(List(-5, 2, 3), List(const, "a", "b"))
-              .contradict(GEQ(List(-9, -2, -3), List(const, "a", "b")))}") //true
+  println(s"contraWith: ${GEQ(List(-5, 2, 3), List(const, "a", "b"))
+              .contraWith(GEQ(List(-9, -2, -3), List(const, "a", "b")))}") //true
 
-  println(s"contradict: ${GEQ(List(9, 2, 3), List(const, "a", "b"))
-              .contradict(GEQ(List(-5, -2, -3), List(const, "a", "b")))}") //false
+  println(s"contraWith: ${GEQ(List(9, 2, 3), List(const, "a", "b"))
+              .contraWith(GEQ(List(-5, -2, -3), List(const, "a", "b")))}") //false
 
-  println(s"contradict: ${GEQ(List(0, 2, 3), List(const, "a", "b"))
-              .contradict(GEQ(List(2, -2, -3), List(const, "a", "b")))}") //false
+  println(s"contraWith: ${GEQ(List(0, 2, 3), List(const, "a", "b"))
+              .contraWith(GEQ(List(2, -2, -3), List(const, "a", "b")))}") //false
 
   ///////////////////////////////
 

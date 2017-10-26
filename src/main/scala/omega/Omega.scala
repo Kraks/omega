@@ -236,7 +236,6 @@ object Problem {
 case class Problem(cs: List[Constraint]) {
   import Problem._
   def generateNewVar(): String = {
-    //"α_" + Random.nextInt(100).toString
     val oldIdx = varIdx
     varIdx += 1
     greeks(oldIdx)
@@ -311,7 +310,12 @@ case class Problem(cs: List[Constraint]) {
   }
 
   def contradict(): Boolean = {
-    ???
+    //This phrase should after equality elimination
+    assert(getEqs.isEmpty)
+    for (Seq(c1, c2) <- getGeqs.combinations(2)) { 
+      if (c1.contradict(c2)) return true 
+    }
+    false
   }
 
 }

@@ -239,15 +239,18 @@ case class GEQ(coefficients: List[Int], vars: List[String])
       (coefficients zip that.coefficients).foldLeft(true)({
         case (b, (c1,c2)) => b && abs(c1)==abs(c2) && (sign(c1)+sign(c2)==0)
       })
-    if (canMerge) Some(EQ(coefficients, vars))
-    else None
+    if (canMerge) Some(EQ(coefficients, vars)) else None
   }
 
   //TODO: better rename this function
   // If two inequalities can be simplified as one, then returns Some(c)
   // Otherwise returns None
   def redundant(that: GEQ): Option[GEQ] = {
-    None
+    val thisConst = coefficients.head
+    val thatConst = that.coefficients.head
+    if ((vars == that.vars) && (coefficients.tail == that.coefficients.tail))
+      Some(GEQ(min(thisConst, thatConst)::coefficients.tail, vars))
+    else None
   }
 }
 
@@ -355,7 +358,7 @@ case class Problem(cs: List[Constraint]) {
         case Some(c) => 
           println(s"redundant: $c1, $c2 => $c")
           cons += c
-          junks += c1 += c2
+          junks += (if (c == c1) c2 else c1)
         case None => c1.tight(c2) match {
           case Some(c) => 
             println(s"tight: $c1, $c2 => $c")
@@ -365,7 +368,8 @@ case class Problem(cs: List[Constraint]) {
         }
       }
     }
-    
+    println(s"constraints: $cons")
+    println(s"junks: $junks")
     Some(Problem((cons -- junks).toList))
   }
   
@@ -467,13 +471,14 @@ object Main extends App {
 
   val p4 = Problem(List(GEQ(List(-6, 2, 3), List(const, "a", "b")),
                         GEQ(List(6, -2, -3), List(const, "a", "b")),
-                        GEQ(List(-5, 2, 3), List(const, "a", "b"))))
+                        GEQ(List(-5, 2, 3), List(const, "a", "c")),
+                        GEQ(List(-10, 2, 3), List(const, "a", "c"))))
   println(p4)
-  val p4tight = p4.reduce.get
-  println(p4tight)
+  val p4reduced = p4.reduce.get
+  println(p4reduced)
 
+  println(s"num of vars: ${p4reduced.numVars}")
   ///////////////////////////////
   
-  println(s"num of vars: ${p4tight.numVars}")
 }
 

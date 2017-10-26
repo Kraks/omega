@@ -199,15 +199,21 @@ case class GEQ(coefficients: List[Int], vars: List[String])
   }
 
   def contradict(that: GEQ): Boolean = {
+    /* Note:
+     * -2 + 2x + 3y >= 0,  0 - 2x - 3y >= 0 are contradictory, but
+     *  0 + 2x + 3y >= 0,  2 - 2x - 3y >= 0 are not.
+     * -5 + 2x + 3y >= 0, -9 - 2x - 3y >= 0 are contradictory, but
+     *  9 + 2x + 3y >= 0, -5 - 2x - 3y >= 0 are not.
+     */
     val thisConst = coefficients.head
     val thatConst = that.coefficients.head
     val thisCoefs = coefficients.tail
     val thatCoefs = that.coefficients.tail
-    //TODO: check zero coefs
+    //TODO: check zero coefs, zero ceofs should be eliminated before
     vars == that.vars &&
     (thisCoefs zip thatCoefs).foldLeft(true)({
       case (b, (c1,c2)) => b && abs(c1) == abs(c2) && (sign(c1)+sign(c2)==0)
-    }) 
+    })
   }
 }
 
@@ -223,14 +229,15 @@ case class Problem(cs: List[Constraint]) {
     greeks(oldIdx)
   }
 
-  def getEqualities(): List[EQ] = {
-    cs.filter(_.isInstanceOf[EQ]).asInstanceOf[List[EQ]]
-  }
-
   def partition(): (List[EQ], List[GEQ]) = {
     val (eqs, geqs) = cs.partition(_.isInstanceOf[EQ])
     (eqs.asInstanceOf[List[EQ]], geqs.asInstanceOf[List[GEQ]])
   }
+
+  val (eqs, geqs) = partition
+
+  def getEqs= eqs
+  def getGeqs = geqs
 
   override def toString(): String = { "{ " + cs.mkString("\n  ") + " }" }
 
@@ -247,7 +254,6 @@ case class Problem(cs: List[Constraint]) {
   }
   
   def eliminateEQs(): Problem = {
-    val (eqs, geqs) = partition()
     def eliminate(eqs: List[EQ], geqs: List[GEQ]): List[GEQ] = {
       if (eqs.nonEmpty) {
         val eq = eqs.head
@@ -288,7 +294,7 @@ case class Problem(cs: List[Constraint]) {
       }
       else { geqs }
     }
-    Problem(eliminate(eqs, geqs))
+    Problem(eliminate(getEqs, getGeqs))
   }
 
   def contradict(): Boolean = {

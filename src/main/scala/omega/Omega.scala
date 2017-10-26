@@ -247,7 +247,7 @@ case class GEQ(coefficients: List[Int], vars: List[String])
   // If two inequalities can be simplified as one, then returns Some(c)
   // Otherwise returns None
   def redundant(that: GEQ): Option[GEQ] = {
-    ???
+    None
   }
 }
 
@@ -277,6 +277,8 @@ case class Problem(cs: List[Constraint]) {
 
   def getEqs= eqs
   def getGeqs = geqs
+
+  def containsEq = eqs.size != 0
 
   override def toString(): String = { "{ " + cs.mkString("\n  ") + " }" }
 
@@ -336,22 +338,37 @@ case class Problem(cs: List[Constraint]) {
     Problem(eliminate(getEqs, getGeqs))
   }
   
-  def removeRedndAndContra(): Option[Problem] = {
+  /* Returns None if found contradictions, 
+   * Otherwise return a problem contains simpler/tigher constraints
+   */
+  def reduce(): Option[Problem] = {
     //This phrase should after equality elimination
     assert(getEqs.isEmpty)
 
-    val s = scala.collection.mutable.Set[Constraint]() //Use Set to remove identical items
+    //Use Set to remove identical items
+    val cons = scala.collection.mutable.Set[Constraint]() 
+    val junks = scala.collection.mutable.Set[Constraint]()
+
     for (Seq(c1, c2) <- getGeqs.combinations(2)) { 
       if (c1.contraWith(c2)) return None
       c1.redundant(c2) match {
-        case Some(c) => s += c
-        case None => s += c1 += c2
+        case Some(c) => 
+          println(s"redundant: $c1, $c2 => $c")
+          cons += c
+          junks += c1 += c2
+        case None => c1.tight(c2) match {
+          case Some(c) => 
+            println(s"tight: $c1, $c2 => $c")
+            cons += c
+            junks += c1 += c2
+          case None => cons += c1 += c2
+        }
       }
     }
     
-    Some(Problem(s.toList))
+    Some(Problem((cons -- junks).toList))
   }
-
+  
   def mergeTightIneqs(): Problem = {
     //This phrase should after equality elimination
     assert(getEqs.isEmpty)
@@ -452,7 +469,7 @@ object Main extends App {
                         GEQ(List(6, -2, -3), List(const, "a", "b")),
                         GEQ(List(-5, 2, 3), List(const, "a", "b"))))
   println(p4)
-  val p4tight = p4.mergeTightIneqs
+  val p4tight = p4.reduce.get
   println(p4tight)
 
   ///////////////////////////////

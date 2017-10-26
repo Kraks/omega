@@ -88,13 +88,14 @@ abstract class Constraint(coefficients: List[Int], vars: List[String])  {
     })
   }
 
-  def removeZeroCoef(coefs: List[Int], vars: List[String]): (List[Int], List[String]) = {
-    val cvpairs = for ((c, v) <- (coefs zip vars) if !(c == 0 && v != const)) yield (c, v)
-    // TODO: refactor this to only use one pass
-    (cvpairs.map(_._1), cvpairs.map(_._2))
-  }
 
-  def getCoefficient(x: String): Int = {
+  def getVars = vars.tail
+
+  def getConstant = coefficients.head
+
+  def getCoefficients = coefficients.tail
+
+  def getCoefficientByVar(x: String): Int = {
     coefficients(vars.indexOf(x))
   }
 
@@ -109,16 +110,22 @@ abstract class Constraint(coefficients: List[Int], vars: List[String])  {
     val newVars = removeByIdx(vars, idx)
     (newCoefs, newVars)
   }
+
+  def removeZeroCoef(coefs: List[Int], vars: List[String]): (List[Int], List[String]) = {
+    val cvpairs = for ((c, v) <- (coefs zip vars) if !(c == 0 && v != const)) yield (c, v)
+    // TODO: may refactor this to only use one pass
+    (cvpairs.map(_._1), cvpairs.map(_._2))
+  }
   
   //TODO: better rename this function
   def _subst(x: String, term: (List[Int], List[String])): (List[Int], List[String]) = {
     if (!vars.contains(x)) {
       return (coefficients, vars)
     }
-    val c = getCoefficient(x)
+    val c = getCoefficientByVar(x)
     val (oldCoefs, oldVars) = removeVar(x)
-    val newCoefs = term._1.map(_ * c)
     val newVars = term._2
+    val newCoefs = term._1.map(_ * c)
     val g = ((oldCoefs++newCoefs) zip (oldVars++newVars)).groupBy(_._2).values.map({
       cvs => cvs.reduce((acc, cv) => (acc._1 + cv._1, cv._2))
     }).toList.sortWith(_._2 < _._2)
@@ -248,22 +255,25 @@ object Problem {
   var varIdx = 0
   val greeks = List("α", "β", "γ", "δ", "ϵ", "ζ", "η", "θ", "ι", "κ", "λ", "μ",
                     "ν", "ξ", "ο", "π", "ρ", "σ", "τ", "υ", "ϕ", "χ", "ψ", "ω")
+
+  def partition(cs: List[Constraint]): (List[EQ], List[GEQ]) = {
+    val (eqs, geqs) = cs.partition(_.isInstanceOf[EQ])
+    (eqs.asInstanceOf[List[EQ]], geqs.asInstanceOf[List[GEQ]])
+  }
 }
 
 case class Problem(cs: List[Constraint]) {
   import Problem._
+
   def generateNewVar(): String = {
     val oldIdx = varIdx
     varIdx += 1
     greeks(oldIdx)
   }
 
-  def partition(): (List[EQ], List[GEQ]) = {
-    val (eqs, geqs) = cs.partition(_.isInstanceOf[EQ])
-    (eqs.asInstanceOf[List[EQ]], geqs.asInstanceOf[List[GEQ]])
-  }
+  val (eqs, geqs) = partition(cs)
 
-  val (eqs, geqs) = partition
+  val numVars = cs.map(_.getVars).flatten.toSet.size
 
   def getEqs= eqs
   def getGeqs = geqs
@@ -444,5 +454,9 @@ object Main extends App {
   println(p4)
   val p4tight = p4.mergeTightIneqs
   println(p4tight)
+
+  ///////////////////////////////
+  
+  println(s"num of vars: ${p4tight.numVars}")
 }
 

@@ -4,7 +4,6 @@ import scala.math._
 import scala.util.Random
 
 object Utils {
-  val const = "_"
 
   private def gcd_aux(a: Int, b: Int): Int = {
     assert(a >= 0 && b >= 0)
@@ -63,9 +62,17 @@ object Utils {
   
 }
 
+object Constraint {
+  val const = "_"
+}
+
 import Utils._
+import Constraint._
 
 abstract class Constraint(coefficients: List[Int], vars: List[String])  {
+  assert(coefficients.size == vars.size)
+  assert(vars(0) == const)
+
   def normalize(): Option[Constraint]
 
   def subst(x: String, term: (List[Int], List[String])): Constraint
@@ -205,23 +212,29 @@ case class GEQ(coefficients: List[Int], vars: List[String])
      * -5 + 2x + 3y >= 0, -9 - 2x - 3y >= 0 are contradictory, but
      *  9 + 2x + 3y >= 0, -5 - 2x - 3y >= 0 are not.
      */
+    //TODO: check zero coefs, zero ceofs should be eliminated before
     val thisConst = coefficients.head
     val thatConst = that.coefficients.head
     val thisCoefs = coefficients.tail
     val thatCoefs = that.coefficients.tail
-    //TODO: check zero coefs, zero ceofs should be eliminated before
+    // variables of two inequalities should be the same
     vars == that.vars &&
+    // coefficients of two inequalities should be additive inversed
     (thisCoefs zip thatCoefs).foldLeft(true)({
       case (b, (c1,c2)) => b && abs(c1) == abs(c2) && (sign(c1)+sign(c2)==0)
-    })
+    }) &&
+    (-thisConst) > thatConst
   }
 }
 
-case class Problem(cs: List[Constraint]) {
+object Problem {
   var varIdx = 0
   val greeks = List("α", "β", "γ", "δ", "ϵ", "ζ", "η", "θ", "ι", "κ", "λ", "μ",
                     "ν", "ξ", "ο", "π", "ρ", "σ", "τ", "υ", "ϕ", "χ", "ψ", "ω")
-  //TODO: refactor this
+}
+
+case class Problem(cs: List[Constraint]) {
+  import Problem._
   def generateNewVar(): String = {
     //"α_" + Random.nextInt(100).toString
     val oldIdx = varIdx
@@ -354,6 +367,15 @@ object Main extends App {
 
   val ineq7 = GEQ(List(-2, 3, 5), List(const, "x", "y"))
   val ineq8 = GEQ(List(0, -3,-5), List(const, "x", "y"))
-  println(s"contradict: ${ineq7.contradict(ineq8)}")
+  println(s"contradict: ${ineq7.contradict(ineq8)}") //true
+
+  println(s"contradict: ${GEQ(List(-5, 2, 3), List(const, "a", "b"))
+              .contradict(GEQ(List(-9, -2, -3), List(const, "a", "b")))}") //true
+
+  println(s"contradict: ${GEQ(List(9, 2, 3), List(const, "a", "b"))
+              .contradict(GEQ(List(-5, -2, -3), List(const, "a", "b")))}") //false
+
+  println(s"contradict: ${GEQ(List(0, 2, 3), List(const, "a", "b"))
+              .contradict(GEQ(List(2, -2, -3), List(const, "a", "b")))}") //false
 }
 

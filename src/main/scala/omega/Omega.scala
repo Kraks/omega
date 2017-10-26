@@ -17,8 +17,8 @@ object Utils {
   }
 
   def gcd(ints: List[Int]): Int = {
-    if (ints.size == 0) 1
-    else if (ints.size == 1) gcd(ints.head, ints.head)
+    if (ints.length == 0) 1
+    else if (ints.length == 1) gcd(ints.head, ints.head)
     else ints.reduce((x, y) => gcd(x, y))
   }
 
@@ -70,7 +70,7 @@ import Utils._
 import Constraint._
 
 abstract class Constraint(coefficients: List[Int], vars: List[String])  {
-  assert(coefficients.size == vars.size)
+  assert(coefficients.length == vars.length)
   assert(vars(0) == const)
 
   def normalize(): Option[Constraint]
@@ -110,7 +110,7 @@ abstract class Constraint(coefficients: List[Int], vars: List[String])  {
     (newCoefs, newVars)
   }
   
-  //TODO: rename this
+  //TODO: better rename this function
   def _subst(x: String, term: (List[Int], List[String])): (List[Int], List[String]) = {
     if (!vars.contains(x)) {
       return (coefficients, vars)
@@ -225,6 +225,16 @@ case class GEQ(coefficients: List[Int], vars: List[String])
     // constant term should be consistant
     (-thisConst) > thatConst
   }
+
+  //TODO: better rename this function
+  def tight(that: GEQ): Option[EQ] = {
+    val canMerge = (vars == that.vars) &&
+      (coefficients zip that.coefficients).foldLeft(true)({
+        case (b, (c1,c2)) => b && abs(c1)==abs(c2) && (sign(c1)+sign(c2)==0)
+      })
+    if (canMerge) Some(EQ(coefficients, vars))
+    else None
+  }
 }
 
 object Problem {
@@ -318,6 +328,29 @@ case class Problem(cs: List[Constraint]) {
     false
   }
 
+  def mergeTightIneqs(): Problem = {
+    //This phrase should after equality elimination
+    assert(getEqs.isEmpty)
+    def merge(geqs: List[GEQ], acc: List[Constraint]): List[Constraint] = {
+      if (geqs.isEmpty) acc
+      else {
+        val geq = geqs.head
+        for ((other,idx) <- geqs.tail.zipWithIndex) {
+          geq.tight(other) match {
+            // TODO: continue merging or return immediately?
+            case Some(c) => 
+              println(s"tight: $geq, $other => $c")
+              println(s"removed: ${removeByIdx(geqs.tail, idx)}")
+              return merge(removeByIdx(geqs.tail, idx), c::acc)
+            case None => 
+          }
+        }
+        merge(geqs.tail, geqs.head::acc)
+      }
+    }
+    Problem(merge(getGeqs, List()))
+  }
+
 }
 
 object Main extends App {
@@ -369,6 +402,8 @@ object Main extends App {
   val ineq6 = GEQ(List(28, -13), List(const, "a")).normalize.get
   println(ineq6)
 
+  ///////////////////////////////
+
   val ineq7 = GEQ(List(-2, 3, 5), List(const, "x", "y"))
   val ineq8 = GEQ(List(0, -3,-5), List(const, "x", "y"))
   println(s"contradict: ${ineq7.contradict(ineq8)}") //true
@@ -381,5 +416,17 @@ object Main extends App {
 
   println(s"contradict: ${GEQ(List(0, 2, 3), List(const, "a", "b"))
               .contradict(GEQ(List(2, -2, -3), List(const, "a", "b")))}") //false
+
+  ///////////////////////////////
+
+  println(s"can be merged: ${GEQ(List(-6, 2, 3), List(const, "a", "b"))
+                      .tight(GEQ(List(6, -2, -3), List(const, "a", "b")))}")
+
+  val p4 = Problem(List(GEQ(List(-6, 2, 3), List(const, "a", "b")),
+                        GEQ(List(6, -2, -3), List(const, "a", "b")),
+                        GEQ(List(-5, 2, 3), List(const, "a", "b"))))
+  println(p4)
+  val p4tight = p4.mergeTightIneqs
+  println(p4tight)
 }
 

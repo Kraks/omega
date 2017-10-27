@@ -140,8 +140,8 @@ abstract class Constraint(coefficients: List[Int], vars: List[String])  {
   }
 }
 
-/* Linear Equality: \Sigma a_i x_i = 0 where x_0 = 1 
- * (here uses "_" stands for that variable)
+/* Linear Equality: \Sigma a_i x_i = 0 where x_0 = 1,
+ * Here always uses "_" stands for x_0.
  */
 case class EQ(coefficients: List[Int], vars: List[String]) 
   extends Constraint(coefficients, vars) {
@@ -168,9 +168,9 @@ case class EQ(coefficients: List[Int], vars: List[String])
    * An atmoic variable has coefficient of 1 or -1.
    * Returns (index, var)
    */
-  def getFirstAtomicVar(): Option[(Int, String)] = {
+  def getFirstAtomicVar(): Option[(String, Int)] = {
     for (((c,x), idx) <- (coefficients.tail zip vars.tail).zipWithIndex) {
-      if (abs(c) == 1) return Some((idx+1, x))
+      if (abs(c) == 1) return Some((x, idx+1))
     }
     return None
   }
@@ -351,7 +351,7 @@ case class Problem(cs: List[Constraint]) {
             eliminate(eq.subst(xk, substTerm).normalize.get::eqs.tail.map(_.subst(xk, substTerm)),
                       geqs.map(_.subst(xk, substTerm)))
 
-          case Some((idx, x)) =>
+          case Some((x, idx)) =>
             val term = eq.getEquation(idx)
             /* Debug */
             val substStr = EQ(term._1, term._2).toStringPartially

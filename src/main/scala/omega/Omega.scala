@@ -80,6 +80,8 @@ trait Constraint[C <: Constraint[C]] {
 
   def subst(x: String, term: (List[Int], List[String])): C
 
+  def trivial: Boolean
+
   def toStringPartially(): String = {
     val s = coefficients.head.toString
     (coefficients.tail zip vars.tail).foldLeft(s)({
@@ -171,6 +173,10 @@ case class EQ(coefficients: List[Int], vars: List[String]) extends Constraint[EQ
   }
   
   override def toString(): String = { toStringPartially() + " = 0" }
+
+  def trivial: Boolean = {
+    ???
+  }
   
   /* Get the first atomic variable. 
    * An atmoic variable has coefficient of 1 or -1.
@@ -274,6 +280,8 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
   /* If two geqs can be simplified as one, or say one can be inferred 
    * from another then returns Some(c), otherwise returns None
    * e.g., given x >= 5 and x >= 0, then return x >= 5
+   * TODO: this requires two inequalities have the same coefficients,
+   *       need to think about other cases
    */
   def subsume(that: GEQ): Option[GEQ] = {
     val thisConst = coefficients.head
@@ -286,9 +294,7 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
   /* Decides whether an inequality trivially holds, i.e., not varibales.
    */
   def trivial: Boolean = {
-    assert(vars.length == 1 && vars.head == const)
-    assert(coefficients.length == 1)
-    coefficients.head >= 0
+    vars.length == 1 && coefficients.length == 1 && coefficients.head >= 0
   }
   
   /* Join two inequalities and eliminate variable x.
@@ -343,9 +349,11 @@ case class Problem(cs: List[Constraint[_]]) {
 
   def hasEq = eqs.size != 0
 
-  val numVars = cs.map(_.getVars).flatten.toSet.size
+  def getVars = cs.map(_.getVars).flatten.toSet.toList
 
-  def onlyOneVar = numVars == 1
+  val numVars = cs.map(_.getVars).flatten.toList.size
+
+  def hasMostOneVar = cs.map(_.getVars).flatten.toList.size <= 1
 
   // TODO: refactor containsVar using geq.containsVar/eq.containsVar
   def containsVar(x: String): Boolean = cs.map(_.getVars).flatten.contains(x)
@@ -359,7 +367,7 @@ case class Problem(cs: List[Constraint[_]]) {
     val newCs: List[Constraint[_]] = for (c <- cs) yield 
       c.normalize match {
         case None => return None
-        case Some(c) => c
+        case Some(cn) => cn
       }
     Some(Problem(newCs))
   }
@@ -415,7 +423,7 @@ case class Problem(cs: List[Constraint[_]]) {
    * Otherwise return a problem contains simpler/tigher constraints
    */
   def reduce(): Option[Problem] = {
-    //This phrase should after equality elimination
+    /* This phrase should after equality elimination */
     assert(getEqs.isEmpty)
     assert(getGeqs.nonEmpty) //TODO: necessay?
 
@@ -424,7 +432,10 @@ case class Problem(cs: List[Constraint[_]]) {
     val junks = scala.collection.mutable.Set[Constraint[_]]()
 
     for (Seq(c1, c2) <- getGeqs.combinations(2)) { 
-      if (c1.contraWith(c2)) return None
+      if (c1.contraWith(c2)) {
+        println(s"contra: $c1, $c2")
+        return None
+      }
       c1.subsume(c2) match {
         case Some(c) => 
           println(s"subsume: $c1, $c2 => $c")
@@ -445,25 +456,74 @@ case class Problem(cs: List[Constraint[_]]) {
     Some(Problem((cons -- junks).toList))
   }
 
+  def allTrivial(): Boolean = cs.foldLeft(true)((b, c) => b && c.trivial)
+
   def hasIntSolutions(): Boolean = {
+    //if (cs.isEmpty) return true
     normalize match {
-      case Some(p) if p.onlyOneVar => true
+      case Some(p) if p.hasMostOneVar => 
+        println(s"only one variable left: ${p.getVars}")
+        true
       case Some(p) if p.hasEq => p.eliminateEQs.hasIntSolutions
-      case Some(p) => p.reduce match {
-        case Some(p) => p.hasIntSolutions
-        case None => ???
-      }
+      case Some(p) => 
+        p.reduce match {
+          case Some(p) => 
+            println(s"fme: $p")
+            p.fmEliminate.hasIntSolutions
+          case None => 
+            false
+        }
       case None => false
     }
   }
 
-  def fmEliminate(x: String): Problem = {
-    ???
+  def fmEliminate(): Problem = {
+    /* This phrase should after equality elimination */
+    assert(getEqs.isEmpty)
+
+    /* We choose the variable that minimizes the number of constraints
+     * resulting from the combination of upper and lower bounds, which
+     * is the variable who has minimum frequency.
+     */
+    def chooseVar(): String = {
+      cs.map(_.getVars).flatten.groupBy(x=>x).toSeq.sortBy(_._2.length).head._1
+    }
+    
+    /* Split the inequalities list into two, the first list contains
+     * variable x, while the second one not.
+     */
+    def partitionGEQs(x: String): (List[GEQ], List[GEQ]) = {
+      geqs.partition(_.containsVar(x))
+    }
+
+    val x = chooseVar()
+    val (ineqx, ineqnox) = partitionGEQs(x)
+    val cons = scala.collection.mutable.Set[Constraint[_]]()
+    
+    println(s"choose var $x")
+    for (ineq <- ineqnox) { cons += ineq }
+    for (Seq(ineq1, ineq2) <- ineqx.combinations(2)) {
+      ineq1.join(ineq2, x) match {
+        case Some(ineq) if !ineq.trivial => 
+          println(s"eliminating $ineq1, $ineq2 => $ineq")
+          cons += ineq
+        case Some(ineq) => /* trivially holds, no need to add to new constraints */
+        case None => 
+          /* In this case, ineq1 and ineq2 are not an upper/lower bound pair,
+           * presumably should not happen since the reduce/subsume should 
+           * be able to eliminate redundant constraints. 
+           */
+      }
+    }
+
+    assert(cons.size < getGeqs.size)
+    
+    Problem(cons.toList)
   }
   
-  /* TODO: consider remove this */
+  /* TODO: consider to remove this */
   def mergeTightIneqs(): Problem = {
-    //This phrase should after equality elimination
+    /* This phrase should after equality elimination */
     assert(getEqs.isEmpty)
 
     def merge(geqs: List[GEQ], acc: List[Constraint[_]]): List[Constraint[_]] = {
@@ -572,6 +632,7 @@ object Main extends App {
   println(p4reduced)
 
   println(s"num of vars: ${p4reduced.numVars}")
+
   ///////////////////////////////
   
   val ineq9 = GEQ(List(0, 3, 2), List(const, "x", "y"))
@@ -581,5 +642,18 @@ object Main extends App {
 
   println(GEQ(List(-3, 1), List(const, "x")).join(GEQ(List(5, -1), List(const, "x")), "x")) // 2 >= 0
   println(GEQ(List(5, -1), List(const, "x")).join(GEQ(List(-3, 1), List(const, "x")), "x")) // 2 >= 0
+
+  ///////////////////////////////
+  
+  val p5 = Problem(List(GEQ(List(7, -3, -2), List(const, "x", "y")),  // 7 - 3x - 2y >= 0
+                        GEQ(List(15, -6, -4), List(const, "x", "y")), // 15 - 6x - 4y >= 0
+                        GEQ(List(1, 1), List(const, "x")),            // 1 + x >= 0
+                        GEQ(List(0, 2), List(const, "y"))))           // 0 + 2y >= 0
+  println(p5.hasIntSolutions) //Yes
+
+  val p6 = Problem(List(GEQ(List(4, -3, -2), List(const, "x", "y")),  // 4 - 3x - 2y >= 0
+                        GEQ(List(-1, 1), List(const, "x")),           // -1 + x >= 0
+                        GEQ(List(-1, 1), List(const, "y"))))          // -1 + y >= 0
+  println(p6.hasIntSolutions)
 }
 

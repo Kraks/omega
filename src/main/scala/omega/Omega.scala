@@ -69,13 +69,16 @@ object Constraint {
 import Utils._
 import Constraint._
 
-abstract class Constraint(coefficients: List[Int], vars: List[String])  {
+trait Constraint[C <: Constraint[C]] {
+  val coefficients: List[Int]
+  val vars: List[String]
+
   assert(coefficients.length == vars.length)
   assert(vars(0) == const)
 
-  def normalize(): Option[Constraint]
+  def normalize(): Option[Constraint[C]]
 
-  def subst(x: String, term: (List[Int], List[String])): Constraint
+  def subst(x: String, term: (List[Int], List[String])): C
 
   def toStringPartially(): String = {
     val s = coefficients.head.toString
@@ -145,8 +148,7 @@ abstract class Constraint(coefficients: List[Int], vars: List[String])  {
 /* Linear Equality: \Sigma a_i x_i = 0 where x_0 = 1,
  * Here always uses "_" stands for x_0.
  */
-case class EQ(coefficients: List[Int], vars: List[String]) 
-  extends Constraint(coefficients, vars) {
+case class EQ(coefficients: List[Int], vars: List[String]) extends Constraint[EQ] {
 
   /* Normalize the coefficients, which makes the gcd of coefficients 
    * is 1. If the constant term a_0 can not be evenly divided by g, 
@@ -201,8 +203,7 @@ case class EQ(coefficients: List[Int], vars: List[String])
 
 /* Linear Inequality: \Sigma a_i x_i >= 0 where x_0 = 1
  */
-case class GEQ(coefficients: List[Int], vars: List[String]) 
-  extends Constraint(coefficients, vars) {
+case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[GEQ] {
   
   override def toString(): String = { toStringPartially() + " >= 0" }
 
@@ -289,13 +290,13 @@ object Problem {
   val greeks = List("α", "β", "γ", "δ", "ϵ", "ζ", "η", "θ", "ι", "κ", "λ", "μ",
                     "ν", "ξ", "ο", "π", "ρ", "σ", "τ", "υ", "ϕ", "χ", "ψ", "ω")
 
-  def partition(cs: List[Constraint]): (List[EQ], List[GEQ]) = {
+  def partition(cs: List[Constraint[_]]): (List[EQ], List[GEQ]) = {
     val (eqs, geqs) = cs.partition(_.isInstanceOf[EQ])
     (eqs.asInstanceOf[List[EQ]], geqs.asInstanceOf[List[GEQ]])
   }
 }
 
-case class Problem(cs: List[Constraint]) {
+case class Problem(cs: List[Constraint[_]]) {
   import Problem._
 
   def generateNewVar(): String = {
@@ -325,7 +326,7 @@ case class Problem(cs: List[Constraint]) {
    * greatest common divisor of the coefficients (not including a_0) is 1.
    */
   def normalize(): Option[Problem] = {
-    val newCs = for (c <- cs) yield 
+    val newCs: List[Constraint[_]] = for (c <- cs) yield 
       c.normalize match {
         case None => return None
         case Some(c) => c
@@ -389,8 +390,8 @@ case class Problem(cs: List[Constraint]) {
     assert(getGeqs.nonEmpty) //TODO: necessay?
 
     //Use Set to remove identical items
-    val cons = scala.collection.mutable.Set[Constraint]() 
-    val junks = scala.collection.mutable.Set[Constraint]()
+    val cons = scala.collection.mutable.Set[Constraint[_]]() 
+    val junks = scala.collection.mutable.Set[Constraint[_]]()
 
     for (Seq(c1, c2) <- getGeqs.combinations(2)) { 
       if (c1.contraWith(c2)) return None
@@ -435,7 +436,7 @@ case class Problem(cs: List[Constraint]) {
     //This phrase should after equality elimination
     assert(getEqs.isEmpty)
 
-    def merge(geqs: List[GEQ], acc: List[Constraint]): List[Constraint] = {
+    def merge(geqs: List[GEQ], acc: List[Constraint[_]]): List[Constraint[_]] = {
       if (geqs.isEmpty) acc
       else {
         val geq = geqs.head

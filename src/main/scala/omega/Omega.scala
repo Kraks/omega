@@ -94,6 +94,8 @@ abstract class Constraint(coefficients: List[Int], vars: List[String])  {
 
   def getCoefficients = coefficients.tail
 
+  def containsVar(x: String) = vars.contains(x)
+
   def getCoefficientByVar(x: String): Int = {
     coefficients(vars.indexOf(x))
   }
@@ -275,6 +277,11 @@ case class GEQ(coefficients: List[Int], vars: List[String])
       Some(GEQ(min(thisConst, thatConst)::coefficients.tail, vars))
     else None
   }
+
+  def join(that: GEQ, x: String): GEQ = {
+    assert(containsVar(x) && that.containsVar(x))
+    ???
+  }
 }
 
 object Problem {
@@ -299,14 +306,18 @@ case class Problem(cs: List[Constraint]) {
 
   val (eqs, geqs) = partition(cs)
 
+  def getEqs= eqs
+
+  def getGeqs = geqs
+
+  def hasEq = eqs.size != 0
+
   val numVars = cs.map(_.getVars).flatten.toSet.size
 
   def onlyOneVar = numVars == 1
 
-  def getEqs= eqs
-  def getGeqs = geqs
-
-  def hasEq = eqs.size != 0
+  // TODO: refactor containsVar using geq.containsVar/eq.containsVar
+  def containsVar(x: String): Boolean = cs.map(_.getVars).flatten.contains(x)
 
   override def toString(): String = { "{ " + cs.mkString("\n  ") + " }" }
 
@@ -322,6 +333,9 @@ case class Problem(cs: List[Constraint]) {
     Some(Problem(newCs))
   }
   
+  /* Elminates the equalities in the problem, returns a new problem that
+   * not contains equalities.
+   */
   def eliminateEQs(): Problem = {
     def eliminate(eqs: List[EQ], geqs: List[GEQ]): List[GEQ] = {
       if (eqs.nonEmpty) {
@@ -411,7 +425,12 @@ case class Problem(cs: List[Constraint]) {
       case None => false
     }
   }
+
+  def fmEliminate(x: String): Problem = {
+    ???
+  }
   
+  /* TODO: consider remove this */
   def mergeTightIneqs(): Problem = {
     //This phrase should after equality elimination
     assert(getEqs.isEmpty)

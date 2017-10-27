@@ -234,7 +234,7 @@ case class GEQ(coefficients: List[Int], vars: List[String])
   }
 
   //TODO: better rename this function
-  def tight(that: GEQ): Option[EQ] = {
+  def tighten(that: GEQ): Option[EQ] = {
     val canMerge = (vars == that.vars) &&
       (coefficients zip that.coefficients).foldLeft(true)({
         case (b, (c1,c2)) => b && abs(c1)==abs(c2) && (sign(c1)+sign(c2)==0)
@@ -360,9 +360,9 @@ case class Problem(cs: List[Constraint]) {
           println(s"redundant: $c1, $c2 => $c")
           cons += c
           junks += (if (c == c1) c2 else c1)
-        case None => c1.tight(c2) match {
+        case None => c1.tighten(c2) match {
           case Some(c) => 
-            println(s"tight: $c1, $c2 => $c")
+            println(s"tighten: $c1, $c2 => $c")
             cons += c
             junks += c1 += c2
           case None => cons += c1 += c2
@@ -396,10 +396,10 @@ case class Problem(cs: List[Constraint]) {
       else {
         val geq = geqs.head
         for ((other,idx) <- geqs.tail.zipWithIndex) {
-          geq.tight(other) match {
+          geq.tighten(other) match {
             // TODO: continue merging or return immediately?
             case Some(c) => 
-              println(s"tight: $geq, $other => $c")
+              println(s"tighten: $geq, $other => $c")
               //println(s"removed: ${removeByIdx(geqs.tail, idx)}")
               return merge(removeByIdx(geqs.tail, idx), c::acc)
             case None => 
@@ -483,7 +483,7 @@ object Main extends App {
   ///////////////////////////////
 
   println(s"can be merged: ${GEQ(List(-6, 2, 3), List(const, "a", "b"))
-                      .tight(GEQ(List(6, -2, -3), List(const, "a", "b")))}")
+                      .tighten(GEQ(List(6, -2, -3), List(const, "a", "b")))}")
 
   val p4 = Problem(List(GEQ(List(-6, 2, 3), List(const, "a", "b")),
                         GEQ(List(6, -2, -3), List(const, "a", "b")),

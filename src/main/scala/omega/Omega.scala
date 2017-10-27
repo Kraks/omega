@@ -120,6 +120,13 @@ trait Constraint[C <: Constraint[C]] {
     // TODO: may refactor this to only use one pass
     (cvpairs.map(_._1), cvpairs.map(_._2))
   }
+
+  def reorder(coefficients: List[Int], vars: List[String]): (List[Int], List[String]) = {
+    val g = (coefficients zip vars).groupBy(_._2).values.map({
+      cvs => cvs.reduce((acc, cv) => (acc._1 + cv._1, cv._2))
+    }).toList.sortWith(_._2 < _._2)
+    (g.map(_._1), g.map(_._2))
+  }
   
   //TODO: better rename this function
   def _subst(x: String, term: (List[Int], List[String])): (List[Int], List[String]) = {
@@ -130,10 +137,7 @@ trait Constraint[C <: Constraint[C]] {
     val (oldCoefs, oldVars) = removeVar(x)
     val newVars = term._2
     val newCoefs = term._1.map(_ * c)
-    val g = ((oldCoefs++newCoefs) zip (oldVars++newVars)).groupBy(_._2).values.map({
-      cvs => cvs.reduce((acc, cv) => (acc._1 + cv._1, cv._2))
-    }).toList.sortWith(_._2 < _._2)
-    (g.map(_._1), g.map(_._2))
+    reorder(oldCoefs++newCoefs, oldVars++newVars)
   }
   
   /* Finds the minimum absolute value of coefficient.
@@ -278,10 +282,36 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
       Some(GEQ(min(thisConst, thatConst)::coefficients.tail, vars))
     else None
   }
-
-  def join(that: GEQ, x: String): GEQ = {
+  
+  /* Decides whether an inequality trivially holds, i.e., not varibales.
+   */
+  def trivial: Boolean = {
+    assert(vars.length == 1 && vars.head == const)
+    assert(coefficients.length == 1)
+    coefficients.head >= 0
+  }
+  
+  /* Join two inequalities and eliminate variable x.
+   * The two inequalities should be a pair of upper bound and
+   * lower bound of x, otherwise return None.
+   */
+  def join(that: GEQ, x: String): Option[GEQ] = {
     assert(containsVar(x) && that.containsVar(x))
-    ???
+    val (thisCoefs, thisVars) = this.removeVar(x)
+    val (thatCoefs, thatVars) = that.removeVar(x)
+    val thisXCoef = this.getCoefficientByVar(x)
+    val thatXCoef = that.getCoefficientByVar(x)
+    
+    assert(thisXCoef != 0 && thatXCoef != 0)
+
+    //TODO: abstract a scale function
+    val (newCoefs, newVars) = if (thatXCoef < 0 && thisXCoef > 0) {
+      reorder(thisCoefs.map(_ * thatXCoef * -1) ++ thatCoefs.map(_ * thisXCoef), thisVars ++ thatVars)
+    } else if (thisXCoef < 0 && thatXCoef > 0) {
+      reorder(thisCoefs.map(_ * thatXCoef) ++ thatCoefs.map(_ * thisXCoef * -1), thisVars ++ thatVars)
+    } else return None
+
+    Some(GEQ(newCoefs, newVars))
   }
 }
 
@@ -544,5 +574,12 @@ object Main extends App {
   println(s"num of vars: ${p4reduced.numVars}")
   ///////////////////////////////
   
+  val ineq9 = GEQ(List(0, 3, 2), List(const, "x", "y"))
+  val ineq10 = GEQ(List(5, -2, 4), List(const, "x", "y"))
+  println(ineq9.join(ineq10, "x")) // 15 + 16y >= 0
+  println(ineq10.join(ineq9, "x"))
+
+  println(GEQ(List(-3, 1), List(const, "x")).join(GEQ(List(5, -1), List(const, "x")), "x")) // 2 >= 0
+  println(GEQ(List(5, -1), List(const, "x")).join(GEQ(List(-3, 1), List(const, "x")), "x")) // 2 >= 0
 }
 

@@ -281,7 +281,7 @@ case class Problem(cs: List[Constraint]) {
   def getEqs= eqs
   def getGeqs = geqs
 
-  def containsEq = eqs.size != 0
+  def hasEq = eqs.size != 0
 
   override def toString(): String = { "{ " + cs.mkString("\n  ") + " }" }
 
@@ -347,6 +347,7 @@ case class Problem(cs: List[Constraint]) {
   def reduce(): Option[Problem] = {
     //This phrase should after equality elimination
     assert(getEqs.isEmpty)
+    assert(getGeqs.nonEmpty) //TODO: necessay?
 
     //Use Set to remove identical items
     val cons = scala.collection.mutable.Set[Constraint]() 
@@ -368,9 +369,22 @@ case class Problem(cs: List[Constraint]) {
         }
       }
     }
+
     println(s"constraints: $cons")
     println(s"junks: $junks")
     Some(Problem((cons -- junks).toList))
+  }
+
+  def hasIntSolutions(): Boolean = {
+    reduce match {
+      case Some(p) if p.hasEq => p.eliminateEQs.normalize match {
+        case Some(p) => p.hasIntSolutions
+        case None => false
+      }
+      case Some(p) if p.numVars == 1 => true
+      case Some(p) => ???
+      case None => false
+    }
   }
   
   def mergeTightIneqs(): Problem = {
@@ -432,7 +446,7 @@ object Main extends App {
   val p2 = Problem(List(eq3, eq4)).normalize.get
   println(p2)
   val p2elim = p2.eliminateEQs
-  println(p2elim)
+  println(s"eq eliminated: $p2elim")
   
   val ineq1 = GEQ(List(-1, 1), List(const, "x"))
   val ineq2 = GEQ(List(40, -1), List(const, "x"))
@@ -442,7 +456,9 @@ object Main extends App {
   val p3 = Problem(List(eq3, eq4, ineq1, ineq2, ineq3, ineq4))
   println(p3)
   val p3elim = p3.eliminateEQs.normalize.get
-  println(p3elim)
+  println(s"eq eliminated:\n $p3elim")
+  val p3reduced = p3elim.reduce.get
+  println(s"reduced:\n $p3reduced")
 
   val ineq5 = GEQ(List(11, 13), List(const, "a")).normalize.get
   println(ineq5)

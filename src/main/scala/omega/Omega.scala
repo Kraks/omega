@@ -88,7 +88,6 @@ abstract class Constraint(coefficients: List[Int], vars: List[String])  {
     })
   }
 
-
   def getVars = vars.tail
 
   def getConstant = coefficients.head
@@ -132,18 +131,26 @@ abstract class Constraint(coefficients: List[Int], vars: List[String])  {
     (g.map(_._1), g.map(_._2))
   }
   
-  // returns (value, index)
+  /* Finds the minimum absolute value of coefficient.
+   * Returns (value, index).
+   */
   def minCoef(): (Int, Int) = { 
     val (v, idx) = minWithIndex(coefficients.tail)(Ordering.by((x:Int) => abs(x))) 
     (v, idx+1)
   }
 }
 
-// Linear Equality: \Sigma a_i x_i = 0 where x_0 = 1 (here uses 
-// "_" stands for that variable)
+/* Linear Equality: \Sigma a_i x_i = 0 where x_0 = 1 
+ * (here uses "_" stands for that variable)
+ */
 case class EQ(coefficients: List[Int], vars: List[String]) 
   extends Constraint(coefficients, vars) {
 
+  /* Normalize the coefficients, which makes the gcd of coefficients 
+   * is 1. If the constant term a_0 can not be evenly divided by g, 
+   * then there is no integer solution, returns None.
+   * Also remove items whose coefficient is 0.
+   */
   override def normalize(): Option[EQ] = {
     val g = gcd(coefficients.tail)
     if (coefficients.head % g == 0) {
@@ -152,15 +159,15 @@ case class EQ(coefficients: List[Int], vars: List[String])
       val (newCoefs, newVars) = removeZeroCoef(coefs, vars)
       Some(EQ(newCoefs, newVars))
     }
-    // If the constant term a_0 can not be evenly divided by g, 
-    // then there is no integer solution, returns None
     else None
   }
   
   override def toString(): String = { toStringPartially() + " = 0" }
   
-  // An atmoic variable which has coefficient of 1 or -1
-  // returns (index, var)
+  /* Get the first atomic variable. 
+   * An atmoic variable has coefficient of 1 or -1.
+   * Returns (index, var)
+   */
   def getFirstAtomicVar(): Option[(Int, String)] = {
     for (((c,x), idx) <- (coefficients.tail zip vars.tail).zipWithIndex) {
       if (abs(c) == 1) return Some((idx+1, x))
@@ -168,6 +175,11 @@ case class EQ(coefficients: List[Int], vars: List[String])
     return None
   }
 
+  /* Get the equation for an atomic variable x_k,
+   * where x_k = a_i * x_i.
+   * Returns a list of integers for a_i, and a list
+   * of strings for x_i.
+   */
   def getEquation(x: String): (List[Int], List[String]) = {
     getEquation(vars.indexOf(x))
   }
@@ -185,40 +197,47 @@ case class EQ(coefficients: List[Int], vars: List[String])
   }
 }
 
-// Linear Inequality: \Sigma a_i x_i >= 0 where x_0 = 1
+/* Linear Inequality: \Sigma a_i x_i >= 0 where x_0 = 1
+ */
 case class GEQ(coefficients: List[Int], vars: List[String]) 
   extends Constraint(coefficients, vars) {
   
+  override def toString(): String = { toStringPartially() + " >= 0" }
+
+  /* Normalize the coefficients, which makes the gcd of coefficients 
+   * is 1.If the constant term a_0 can not be evenly divided by g,
+   * then take floors of a_0/g, which tightens the inequality.
+   * Also remove items whose coefficient is 0.
+   */
   override def normalize(): Option[GEQ] = {
     //TODO: may need to review this
     val g = gcd(coefficients.tail)
     val coefs = if (coefficients.head % g == 0) { coefficients.map(_ / g) }
-    // If the constant term a_0 can not be evenly divided by g,
-    // then take floors of a_0/g, which tightens the inequality
     else {
       //val a0 = coefficients.head / g
       val a0 = floor(coefficients.head.toDouble / g).toInt
       a0::coefficients.tail.map(_ / g)
     }
-    // Also remove items whose coefficient is 0
     val (newCoefs, newVars) = removeZeroCoef(coefs, vars)
     Some(GEQ(newCoefs, newVars))
   }
   
-  override def toString(): String = { toStringPartially() + " >= 0" }
-
+  /* Substitute a variable with a linear term, which the term is a list
+   * of integers (coefficients) and a list of strings (variables).
+   */
   override def subst(x: String, term: (List[Int], List[String])): GEQ = {
     val (c, v) = _subst(x, term)
     GEQ(c, v)
   }
 
+  /* Check if two geqs are contradictory.
+   * e.g.,
+   * -2 + 2x + 3y >= 0,  0 - 2x - 3y >= 0 are contraWithory, but
+   *  0 + 2x + 3y >= 0,  2 - 2x - 3y >= 0 are not.
+   * -5 + 2x + 3y >= 0, -9 - 2x - 3y >= 0 are contraWithory, but
+   *  9 + 2x + 3y >= 0, -5 - 2x - 3y >= 0 are not.
+   */
   def contraWith(that: GEQ): Boolean = {
-    /* Note:
-     * -2 + 2x + 3y >= 0,  0 - 2x - 3y >= 0 are contraWithory, but
-     *  0 + 2x + 3y >= 0,  2 - 2x - 3y >= 0 are not.
-     * -5 + 2x + 3y >= 0, -9 - 2x - 3y >= 0 are contraWithory, but
-     *  9 + 2x + 3y >= 0, -5 - 2x - 3y >= 0 are not.
-     */
     //TODO: check zero coefs, zero ceofs should be eliminated before
     val thisConst = coefficients.head
     val thatConst = that.coefficients.head
@@ -232,8 +251,11 @@ case class GEQ(coefficients: List[Int], vars: List[String])
     // constant term should be consistant
     (-thisConst) > thatConst
   }
-
-  //TODO: better rename this function
+  
+  /* If two geqs can form a tight equality, then return the equality,
+   * otherwise returns None.
+   * e.g., given 2x + 3y >= 6 and 2x + 3y <= 6, returns 2x + 3y = 6.
+   */
   def tighten(that: GEQ): Option[EQ] = {
     val canMerge = (vars == that.vars) &&
       (coefficients zip that.coefficients).foldLeft(true)({
@@ -242,10 +264,11 @@ case class GEQ(coefficients: List[Int], vars: List[String])
     if (canMerge) Some(EQ(coefficients, vars)) else None
   }
 
-  //TODO: better rename this function
-  // If two inequalities can be simplified as one, then returns Some(c)
-  // Otherwise returns None
-  def redundant(that: GEQ): Option[GEQ] = {
+  /* If two geqs can be simplified as one, or say one can be inferred 
+   * from another then returns Some(c), otherwise returns None
+   * e.g., given x >= 5 and x >= 0, then return x >= 5
+   */
+  def subsume(that: GEQ): Option[GEQ] = {
     val thisConst = coefficients.head
     val thatConst = that.coefficients.head
     if ((vars == that.vars) && (coefficients.tail == that.coefficients.tail))
@@ -277,6 +300,8 @@ case class Problem(cs: List[Constraint]) {
   val (eqs, geqs) = partition(cs)
 
   val numVars = cs.map(_.getVars).flatten.toSet.size
+
+  def onlyOneVar = numVars == 1
 
   def getEqs= eqs
   def getGeqs = geqs
@@ -355,9 +380,9 @@ case class Problem(cs: List[Constraint]) {
 
     for (Seq(c1, c2) <- getGeqs.combinations(2)) { 
       if (c1.contraWith(c2)) return None
-      c1.redundant(c2) match {
+      c1.subsume(c2) match {
         case Some(c) => 
-          println(s"redundant: $c1, $c2 => $c")
+          println(s"subsume: $c1, $c2 => $c")
           cons += c
           junks += (if (c == c1) c2 else c1)
         case None => c1.tighten(c2) match {
@@ -376,13 +401,13 @@ case class Problem(cs: List[Constraint]) {
   }
 
   def hasIntSolutions(): Boolean = {
-    reduce match {
-      case Some(p) if p.hasEq => p.eliminateEQs.normalize match {
+    normalize match {
+      case Some(p) if p.onlyOneVar => true
+      case Some(p) if p.hasEq => p.eliminateEQs.hasIntSolutions
+      case Some(p) => p.reduce match {
         case Some(p) => p.hasIntSolutions
-        case None => false
+        case None => ???
       }
-      case Some(p) if p.numVars == 1 => true
-      case Some(p) => ???
       case None => false
     }
   }
@@ -455,10 +480,13 @@ object Main extends App {
   val ineq4 = GEQ(List(50, -1), List(const, "y"))
   val p3 = Problem(List(eq3, eq4, ineq1, ineq2, ineq3, ineq4))
   println(p3)
+
   val p3elim = p3.eliminateEQs.normalize.get
   println(s"eq eliminated:\n $p3elim")
   val p3reduced = p3elim.reduce.get
   println(s"reduced:\n $p3reduced")
+
+  println(s"p3 has integer solutions: ${p3.hasIntSolutions}")
 
   val ineq5 = GEQ(List(11, 13), List(const, "a")).normalize.get
   println(ineq5)

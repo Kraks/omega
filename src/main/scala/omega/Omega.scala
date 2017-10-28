@@ -459,19 +459,23 @@ case class Problem(cs: List[Constraint[_]]) {
   def allTrivial(): Boolean = cs.foldLeft(true)((b, c) => b && c.trivial)
 
   def hasIntSolutions(): Boolean = {
-    //if (cs.isEmpty) return true
     normalize match {
+      case Some(p) if p.cs.isEmpty => true
       case Some(p) if p.hasMostOneVar => 
-        println(s"only one variable left: ${p.getVars}")
-        true
+        if (p.numVars == 1) {
+          println(s"only one variable left: ${p.getVars}")
+          true
+        } else {
+          assert(p.cs.size == 1)
+          p.allTrivial
+        }
       case Some(p) if p.hasEq => p.eliminateEQs.hasIntSolutions
       case Some(p) => 
         p.reduce match {
           case Some(p) => 
             println(s"fme: $p")
             p.fmEliminate.hasIntSolutions
-          case None => 
-            false
+          case None => false
         }
       case None => false
     }

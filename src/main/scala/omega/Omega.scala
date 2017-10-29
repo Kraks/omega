@@ -3,6 +3,8 @@ package omega
 import scala.math._
 import scala.util.Random
 
+import scala.collection._
+
 object Utils {
 
   private def gcd_aux(a: Int, b: Int): Int = {
@@ -143,12 +145,14 @@ trait Constraint[C <: Constraint[C]] {
   }
   
   /* Finds the minimum absolute value of coefficient.
-   * Returns (value, index).
+   * Returns ((value, var) index).
    */
-  def minCoef(): (Int, Int) = { 
+  def minCoef(): ((Int, String), Int) = { 
     val (v, idx) = minWithIndex(coefficients.tail)(Ordering.by((x:Int) => abs(x))) 
-    (v, idx+1)
+    ((v, getVarByIdx(idx+1)), idx+1)
   }
+
+  def noZeroCoef(): Boolean = { !coefficients.tail.contains(0) }
 }
 
 /* Linear Equality: \Sigma a_i x_i = 0 where x_0 = 1,
@@ -243,6 +247,7 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
     GEQ(c, v)
   }
 
+
   /* Check if two geqs are contradictory.
    * e.g.,
    * -2 + 2x + 3y >= 0,  0 - 2x - 3y >= 0 are contraWithory, but
@@ -251,6 +256,8 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
    *  9 + 2x + 3y >= 0, -5 - 2x - 3y >= 0 are not.
    */
   def contraWith(that: GEQ): Boolean = {
+    assert(noZeroCoef && that.noZeroCoef)
+
     //TODO: check zero coefs, zero ceofs should be eliminated before
     val thisConst = coefficients.head
     val thatConst = that.coefficients.head
@@ -270,6 +277,8 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
    * e.g., given 2x + 3y >= 6 and 2x + 3y <= 6, returns 2x + 3y = 6.
    */
   def tighten(that: GEQ): Option[EQ] = {
+    assert(noZeroCoef && that.noZeroCoef)
+
     val canMerge = (vars == that.vars) &&
       (coefficients zip that.coefficients).foldLeft(true)({
         case (b, (c1,c2)) => b && abs(c1)==abs(c2) && (sign(c1)+sign(c2)==0)
@@ -284,6 +293,8 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
    *       need to think about other cases
    */
   def subsume(that: GEQ): Option[GEQ] = {
+    assert(noZeroCoef && that.noZeroCoef)
+
     val thisConst = coefficients.head
     val thatConst = that.coefficients.head
     if ((vars == that.vars) && (coefficients.tail == that.coefficients.tail))
@@ -291,7 +302,8 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
     else None
   }
   
-  /* Decides whether an inequality trivially holds, i.e., not varibales.
+  /* Decides whether an inequality trivially holds, i.e., not variable involves,
+   * and constant term is greater or equal than 0.
    */
   def trivial: Boolean = {
     vars.length == 1 && coefficients.length == 1 && coefficients.head >= 0
@@ -303,6 +315,8 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
    */
   def join(that: GEQ, x: String): Option[GEQ] = {
     assert(containsVar(x) && that.containsVar(x))
+    assert(noZeroCoef && that.noZeroCoef)
+
     val (thisCoefs, thisVars) = this.removeVar(x)
     val (thatCoefs, thatVars) = that.removeVar(x)
     val thisXCoef = this.getCoefficientByVar(x)
@@ -375,7 +389,7 @@ case class Problem(cs: List[Constraint[_]]) {
   /* Elminates the equalities in the problem, returns a new problem that
    * not contains equalities.
    */
-  def eliminateEQs(): Problem = {
+  def elimEQs(): Problem = {
     def eliminate(eqs: List[EQ], geqs: List[GEQ]): List[GEQ] = {
       if (eqs.nonEmpty) {
         val eq = eqs.head
@@ -385,8 +399,7 @@ case class Problem(cs: List[Constraint[_]]) {
 
         eq.getFirstAtomicVar match {
           case None =>
-            val (ak, idx) = eq.minCoef
-            val xk = eq.getVarByIdx(idx)
+            val ((ak, xk), idx) = eq.minCoef
             val sign_ak = sign(ak)
             val m = abs(ak) + 1
             val v = generateNewVar
@@ -428,8 +441,8 @@ case class Problem(cs: List[Constraint[_]]) {
     assert(getGeqs.nonEmpty) //TODO: necessay?
 
     //Use Set to remove identical items
-    val cons = scala.collection.mutable.Set[Constraint[_]]() 
-    val junks = scala.collection.mutable.Set[Constraint[_]]()
+    val cons = mutable.Set[Constraint[_]]() 
+    val junks = mutable.Set[Constraint[_]]()
 
     for (Seq(c1, c2) <- getGeqs.combinations(2)) { 
       if (c1.contraWith(c2)) {
@@ -459,59 +472,67 @@ case class Problem(cs: List[Constraint[_]]) {
   def allTrivial(): Boolean = cs.foldLeft(true)((b, c) => b && c.trivial)
 
   def hasIntSolutions(): Boolean = {
+    //TODO: do we need to call normalize on every iteration?
     normalize match {
       case Some(p) if p.cs.isEmpty => true
       case Some(p) if p.hasMostOneVar => 
         if (p.numVars == 1) {
-          println(s"only one variable left: ${p.getVars}")
+          println(s"only one variable left: ${p.getVars.head}")
           true
         } else {
           assert(p.cs.size == 1)
           p.allTrivial
         }
-      case Some(p) if p.hasEq => p.eliminateEQs.hasIntSolutions
+      case Some(p) if p.hasEq => p.elimEQs.hasIntSolutions
       case Some(p) => 
         p.reduce match {
           case Some(p) => 
-            println(s"fme: $p")
-            p.fmEliminate.hasIntSolutions
+            Problem(p.realShadow.toList).hasIntSolutions
           case None => false
         }
       case None => false
     }
   }
 
-  def fmEliminate(): Problem = {
+  /* Split the inequalities list into two, the first list contains
+   * variable x, while the second one not.
+   */
+  private def partitionGEQs(x: String): (List[GEQ], List[GEQ]) = {
+    geqs.partition(_.containsVar(x))
+  }
+
+  /* We choose the variable that minimizes the number of constraints
+   * resulting from the combination of upper and lower bounds, which
+   * is the variable who has minimum frequency.
+   */
+  private def chooseVar(): String = {
+    cs.map(_.getVars).flatten.groupBy(x=>x).toSeq.sortBy(_._2.length).head._1
+  }
+
+  /* Perform a classical Fourier-Motzkin variable elimination,
+   * and obtain a new constraint set called real shadow.
+   * See section 2.3.1 of paper The Omega Test in CACM.
+   */
+  def realShadow(): mutable.Set[Constraint[_]] = {
+    val x = chooseVar()
+    println(s"real shadow chooses var: $x")
+    realShadow(x)
+  }
+  
+  def realShadow(x: String): mutable.Set[Constraint[_]] = {
     /* This phrase should after equality elimination */
     assert(getEqs.isEmpty)
-
-    /* We choose the variable that minimizes the number of constraints
-     * resulting from the combination of upper and lower bounds, which
-     * is the variable who has minimum frequency.
-     */
-    def chooseVar(): String = {
-      cs.map(_.getVars).flatten.groupBy(x=>x).toSeq.sortBy(_._2.length).head._1
-    }
     
-    /* Split the inequalities list into two, the first list contains
-     * variable x, while the second one not.
-     */
-    def partitionGEQs(x: String): (List[GEQ], List[GEQ]) = {
-      geqs.partition(_.containsVar(x))
-    }
-
-    val x = chooseVar()
     val (ineqx, ineqnox) = partitionGEQs(x)
-    val cons = scala.collection.mutable.Set[Constraint[_]]()
-    
-    println(s"choose var $x")
-    for (ineq <- ineqnox) { cons += ineq }
+    val cons = mutable.Set[Constraint[_]]()
+    cons ++= ineqnox
+
     for (Seq(ineq1, ineq2) <- ineqx.combinations(2)) {
       ineq1.join(ineq2, x) match {
-        case Some(ineq) if !ineq.trivial => 
-          println(s"eliminating $ineq1, $ineq2 => $ineq")
+        case Some(ineq) if ineq.trivial => /* trivially holds, no need to add to new constraints */
+        case Some(ineq) => 
+          println(s"real shadow eliminating $ineq1, $ineq2 => $ineq")
           cons += ineq
-        case Some(ineq) => /* trivially holds, no need to add to new constraints */
         case None => 
           /* In this case, ineq1 and ineq2 are not an upper/lower bound pair,
            * presumably should not happen since the reduce/subsume should 
@@ -521,8 +542,30 @@ case class Problem(cs: List[Constraint[_]]) {
     }
 
     assert(cons.size < getGeqs.size)
-    
-    Problem(cons.toList)
+    cons
+  }
+
+  private def chooseVarMinCoef(): String = {
+    ???
+  }
+
+  def darkShadlow(): mutable.Set[Constraint[_]] = {
+    var x = chooseVarMinCoef()
+    println(s"dark shadow chooses var: $x")
+    darkShadlow(x)
+  }
+  
+  /* Perform a variant Fourier-Motzkin variable elimination.
+   */
+  def darkShadlow(x: String): mutable.Set[Constraint[_]] = {
+    /* This phrase should after equality elimination */
+    assert(getEqs.isEmpty)
+
+    val (ineqx, ineqnox) = partitionGEQs(x)
+    val cons = mutable.Set[Constraint[_]]()
+    cons ++= ineqnox
+
+    ???
   }
   
   /* TODO: consider to remove this */
@@ -575,7 +618,7 @@ object Main extends App {
                List("_", "b", "a"))
   val p1 = Problem(List(eq2, eq1))
   println(p1)
-  //val p1elim = p1.eliminateEQs
+  //val p1elim = p1.elimEQs
   //println("after elimination: " + p1elim)
 
   ///////////////////////////////
@@ -584,7 +627,7 @@ object Main extends App {
   val eq4 = EQ(List(-7,  3, 5,  14), List(const, "x", "y", "z"))
   val p2 = Problem(List(eq3, eq4)).normalize.get
   println(p2)
-  val p2elim = p2.eliminateEQs
+  val p2elim = p2.elimEQs
   println(s"eq eliminated: $p2elim")
   
   val ineq1 = GEQ(List(-1, 1), List(const, "x"))
@@ -595,7 +638,7 @@ object Main extends App {
   val p3 = Problem(List(eq3, eq4, ineq1, ineq2, ineq3, ineq4))
   println(p3)
 
-  val p3elim = p3.eliminateEQs.normalize.get
+  val p3elim = p3.elimEQs.normalize.get
   println(s"eq eliminated:\n $p3elim")
   val p3reduced = p3elim.reduce.get
   println(s"reduced:\n $p3reduced")
@@ -653,11 +696,11 @@ object Main extends App {
                         GEQ(List(15, -6, -4), List(const, "x", "y")), // 15 - 6x - 4y >= 0
                         GEQ(List(1, 1), List(const, "x")),            // 1 + x >= 0
                         GEQ(List(0, 2), List(const, "y"))))           // 0 + 2y >= 0
-  println(p5.hasIntSolutions) //Yes
+  println(p5.hasIntSolutions) //true
 
   val p6 = Problem(List(GEQ(List(4, -3, -2), List(const, "x", "y")),  // 4 - 3x - 2y >= 0
                         GEQ(List(-1, 1), List(const, "x")),           // -1 + x >= 0
                         GEQ(List(-1, 1), List(const, "y"))))          // -1 + y >= 0
-  println(p6.hasIntSolutions)
+  println(p6.hasIntSolutions) //false
 }
 

@@ -184,7 +184,7 @@ case class EQ(coefficients: List[Int], vars: List[String]) extends Constraint[EQ
   override def toString(): String = { toStringPartially() + " = 0" }
 
   def trivial: Boolean = {
-    ???
+    vars.length == 1 && coefficients.length == 1 && coefficients.head == 0
   }
   
   /* Get the first atomic variable. 
@@ -600,9 +600,17 @@ case class Problem(cs: List[Constraint[_]]) {
     cons ++= ineqnox
     
     for (Seq(ineq1, ineq2) <- ineqx.combinations(2)) {
-      
+      ineq1.tightJoin(ineq2, x) match {
+        case Some(ineq) if ineq.trivial =>
+        case Some(ineq) =>
+          println(s"dark shadow eliminating $ineq1, $ineq2 => $ineq")
+          cons += ineq
+        case None =>
+      }
     }
-    ???
+    
+    assert(cons.size < getGeqs.size)
+    cons
   }
   
   /* TODO: consider to remove this */

@@ -586,7 +586,7 @@ case class Problem(cs: List[Constraint[_]]) {
   def darkShadow(): mutable.Set[Constraint[_]] = {
     var x = chooseVarMinCoef()
     println(s"dark shadow chooses var: $x")
-    darkShadlow(x)
+    darkShadow(x)
   }
   
   /* Perform a variant Fourier-Motzkin variable elimination.

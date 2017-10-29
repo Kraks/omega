@@ -549,15 +549,15 @@ case class Problem(cs: List[Constraint[_]]) {
     ???
   }
 
-  def darkShadlow(): mutable.Set[Constraint[_]] = {
+  def darkShadow(): mutable.Set[Constraint[_]] = {
     var x = chooseVarMinCoef()
     println(s"dark shadow chooses var: $x")
-    darkShadlow(x)
+    darkShadow(x)
   }
   
   /* Perform a variant Fourier-Motzkin variable elimination.
    */
-  def darkShadlow(x: String): mutable.Set[Constraint[_]] = {
+  def darkShadow(x: String): mutable.Set[Constraint[_]] = {
     /* This phrase should after equality elimination */
     assert(getEqs.isEmpty)
 

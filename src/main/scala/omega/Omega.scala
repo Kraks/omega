@@ -124,13 +124,18 @@ trait Constraint[C <: Constraint[C]] {
     // TODO: may refactor this to only use one pass
     (cvpairs.map(_._1), cvpairs.map(_._2))
   }
-
+  
+  /* Combines like terms and reorder the variables alphabetically.
+   * The constant term placed at the first position.
+   */
   def reorder(coefficients: List[Int], vars: List[String]): (List[Int], List[String]) = {
     val g = (coefficients zip vars).groupBy(_._2).values.map({
       cvs => cvs.reduce((acc, cv) => (acc._1 + cv._1, cv._2))
     }).toList.sortWith(_._2 < _._2)
     (g.map(_._1), g.map(_._2))
   }
+
+  def scale(coefficients: List[Int], x: Int): List[Int] = { coefficients.map(_ * x) }
   
   //TODO: better rename this function
   def _subst(x: String, term: (List[Int], List[String])): (List[Int], List[String]) = {
@@ -324,13 +329,39 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
     
     assert(thisXCoef != 0 && thatXCoef != 0)
 
-    //TODO: abstract a scale function
     val (newCoefs, newVars) = if (thatXCoef < 0 && thisXCoef > 0) {
-      reorder(thisCoefs.map(_ * thatXCoef * -1) ++ thatCoefs.map(_ * thisXCoef), thisVars ++ thatVars)
+      /* this is an upper bound; that is a lower bound */
+      reorder(scale(thisCoefs, -1*thatXCoef)++scale(thatCoefs, thisXCoef), thisVars++thatVars)
     } else if (thisXCoef < 0 && thatXCoef > 0) {
-      reorder(thisCoefs.map(_ * thatXCoef) ++ thatCoefs.map(_ * thisXCoef * -1), thisVars ++ thatVars)
+      /* this is a lower bound; that is an upper bound */
+      reorder(scale(thisCoefs, thatXCoef)++scale(thatCoefs, -1*thisXCoef), thisVars++thatVars)
     } else return None
 
+    Some(GEQ(newCoefs, newVars))
+  }
+
+  def tightJoin(that: GEQ, x: String): Option[GEQ] = {
+    assert(containsVar(x) && that.containsVar(x))
+    assert(noZeroCoef && that.noZeroCoef)
+
+    val (thisCoefs, thisVars) = this.removeVar(x)
+    val (thatCoefs, thatVars) = that.removeVar(x)
+    val thisXCoef = this.getCoefficientByVar(x)
+    val thatXCoef = that.getCoefficientByVar(x)
+    
+    assert(thisXCoef != 0 && thatXCoef != 0)
+
+    
+    val (newCoefs, newVars) = if (thatXCoef < 0 && thisXCoef > 0) {
+      /* this is an upper bound; that is a lower bound */
+     val m = abs(thatXCoef * thisXCoef) - abs(thisXCoef) - thatXCoef + 1
+      reorder((-m)::scale(thisCoefs, -1*thatXCoef)++scale(thatCoefs, thisXCoef), const::thisVars++thatVars)
+    } else if (thisXCoef < 0 && thatXCoef > 0) {
+      /* this is a lower bound; that is an upper bound */
+      val m = abs(thisXCoef * thatXCoef) - abs(thatXCoef) - thisXCoef + 1
+      reorder((-m)::scale(thisCoefs, thatXCoef)++scale(thatCoefs, -1*thisXCoef), const::thisVars++thatVars)
+    } else return None
+    
     Some(GEQ(newCoefs, newVars))
   }
 }
@@ -545,11 +576,14 @@ case class Problem(cs: List[Constraint[_]]) {
     cons
   }
 
-  private def chooseVarMinCoef(): String = {
-    ???
+  def chooseVarMinCoef(): String = {
+    val (((c, x), _), _) = minWithIndex(cs.map(_.minCoef))(Ordering.by({ 
+      case x: ((Int,String),Int) => abs(x._1._1) 
+    }))
+    x
   }
 
-  def darkShadlow(): mutable.Set[Constraint[_]] = {
+  def darkShadow(): mutable.Set[Constraint[_]] = {
     var x = chooseVarMinCoef()
     println(s"dark shadow chooses var: $x")
     darkShadlow(x)
@@ -557,14 +591,17 @@ case class Problem(cs: List[Constraint[_]]) {
   
   /* Perform a variant Fourier-Motzkin variable elimination.
    */
-  def darkShadlow(x: String): mutable.Set[Constraint[_]] = {
+  def darkShadow(x: String): mutable.Set[Constraint[_]] = {
     /* This phrase should after equality elimination */
     assert(getEqs.isEmpty)
 
     val (ineqx, ineqnox) = partitionGEQs(x)
     val cons = mutable.Set[Constraint[_]]()
     cons ++= ineqnox
-
+    
+    for (Seq(ineq1, ineq2) <- ineqx.combinations(2)) {
+      
+    }
     ???
   }
   
@@ -685,7 +722,7 @@ object Main extends App {
   val ineq9 = GEQ(List(0, 3, 2), List(const, "x", "y"))
   val ineq10 = GEQ(List(5, -2, 4), List(const, "x", "y"))
   println(ineq9.join(ineq10, "x")) // 15 + 16y >= 0
-  println(ineq10.join(ineq9, "x"))
+  println(ineq10.join(ineq9, "x")) // 15 + 16y >= 0
 
   println(GEQ(List(-3, 1), List(const, "x")).join(GEQ(List(5, -1), List(const, "x")), "x")) // 2 >= 0
   println(GEQ(List(5, -1), List(const, "x")).join(GEQ(List(-3, 1), List(const, "x")), "x")) // 2 >= 0
@@ -696,6 +733,8 @@ object Main extends App {
                         GEQ(List(15, -6, -4), List(const, "x", "y")), // 15 - 6x - 4y >= 0
                         GEQ(List(1, 1), List(const, "x")),            // 1 + x >= 0
                         GEQ(List(0, 2), List(const, "y"))))           // 0 + 2y >= 0
+
+  println(s"p5 var with min ceof: ${p5.chooseVarMinCoef}") //x
   println(p5.hasIntSolutions) //true
 
   val p6 = Problem(List(GEQ(List(4, -3, -2), List(const, "x", "y")),  // 4 - 3x - 2y >= 0

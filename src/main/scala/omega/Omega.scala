@@ -513,8 +513,17 @@ case class Problem(cs: List[Constraint[_]]) {
       case Some(p) if p.hasEq => p.elimEQs.hasIntSolutions
       case Some(p) => 
         p.reduce match {
-          case Some(p) => 
-            p.realShadow.hasIntSolutions
+          case Some(p) =>
+            val realSet = p.realShadowSet
+            val darkSet = p.darkShadowSet
+            if (realSet == darkSet) { p.realShadow.hasIntSolutions }
+            else if (!p.realShadow.hasIntSolutions) false
+            else if (p.darkShadow.hasIntSolutions) true
+            else {
+              /* real shadow has int solution; but dark shadow does not */
+              ???
+              
+            }
           case None => false
         }
       case None => false
@@ -686,8 +695,10 @@ object Main extends App {
   println(s"eq eliminated:\n $p3elim")
   val p3reduced = p3elim.reduce.get
   println(s"reduced:\n $p3reduced")
-
-  println(s"p3 has integer solutions: ${p3.hasIntSolutions}")
+  
+  val p3ans = p3.hasIntSolutions
+  assert(p3ans)
+  println(s"p3 has integer solutions: ${p3ans}")
 
   val ineq5 = GEQ(List(11, 13), List(const, "a")).normalize.get
   println(ineq5)
@@ -742,12 +753,16 @@ object Main extends App {
                         GEQ(List(0, 2), List(const, "y"))))           // 0 + 2y >= 0
 
   println(s"p5 var with min ceof: ${p5.chooseVarMinCoef}") //x
-  println(p5.hasIntSolutions) //true
+  val p5ans = p5.hasIntSolutions
+  assert(p5ans)
+  println(s"p5 has integer solutions: ${p5ans}")
 
   val p6 = Problem(List(GEQ(List(4, -3, -2), List(const, "x", "y")),  // 4 - 3x - 2y >= 0
                         GEQ(List(-1, 1), List(const, "x")),           // -1 + x >= 0
                         GEQ(List(-1, 1), List(const, "y"))))          // -1 + y >= 0
-  println(p6.hasIntSolutions) //false
+  val p6ans = p6.hasIntSolutions
+  assert(!p6ans)
+  println(s"p6 has integer solutions: ${p6ans}")
 
   ///////////////////////////////
 

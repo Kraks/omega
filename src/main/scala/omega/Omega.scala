@@ -529,14 +529,15 @@ case class Problem(cs: List[Constraint[_]]) {
       case Some(p) => 
         p.reduce match {
           case Some(p) =>
-            val x = chooseVar()
-            val realSet = p.realShadowSet(x)
-            val darkSet = p.darkShadowSet(x)
+            val x0 = chooseVar()
+            val realSet = p.realShadowSet(x0)
+            val darkSet = p.darkShadowSet(x0)
             if (realSet == darkSet) { Problem(realSet.toList).hasIntSolutions } // exact elimination
             else if (!Problem(realSet.toList).hasIntSolutions) false            
             else if (Problem(darkSet.toList).hasIntSolutions) true              // inexact elimination
             else {
               /* real shadow has int solution; but dark shadow does not */
+              val x = chooseVarMinCoef()
               // m is the most negative coefficient of x
               val m = (for (c <- cs if c.containsVar(x)) yield {
                 c.getCoefficientByVar(x)
@@ -544,7 +545,9 @@ case class Problem(cs: List[Constraint[_]]) {
               //for each lower bound of x
               for (lb <- lowerBounds(x)) {
                 val coefx = lb.getCoefficientByVar(x)
-                for (j <- 0 to (floor(abs(m * coefx) - abs(m) - coefx) / abs(m)).toInt) {
+                val j = (floor(abs(m * coefx) - abs(m) - coefx) / abs(m)).toInt
+                println(s"### x: $x m: $m, j: $j, coefx: $coefx ###")
+                for (j <- 0 to j) {
                   val (newCoefs, newVars) = reorder((-1*j)::lb.coefficients, const::lb.vars)
                   if (Problem(EQ(newCoefs, newVars)::p.cs).hasIntSolutions) return true
                 }

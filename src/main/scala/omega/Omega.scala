@@ -351,14 +351,12 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
     
     assert(thisXCoef != 0 && thatXCoef != 0)
 
-    
+    val m = (thisXCoef - 1) * (thatXCoef - 1)
     val (newCoefs, newVars) = if (thatXCoef < 0 && thisXCoef > 0) {
-      /* this is an upper bound; that is a lower bound */
-     val m = abs(thatXCoef * thisXCoef) - abs(thisXCoef) - thatXCoef + 1
-      reorder((-m)::scale(thisCoefs, -1*thatXCoef)++scale(thatCoefs, thisXCoef), const::thisVars++thatVars)
-    } else if (thisXCoef < 0 && thatXCoef > 0) {
       /* this is a lower bound; that is an upper bound */
-      val m = abs(thisXCoef * thatXCoef) - abs(thatXCoef) - thisXCoef + 1
+      reorder(m::scale(thisCoefs, -1*thatXCoef)++scale(thatCoefs, thisXCoef), const::thisVars++thatVars)
+    } else if (thisXCoef < 0 && thatXCoef > 0) {
+      /* this is an upper bound; that is a lower bound */
       reorder((-m)::scale(thisCoefs, thatXCoef)++scale(thatCoefs, -1*thisXCoef), const::thisVars++thatVars)
     } else return None
     
@@ -518,7 +516,7 @@ case class Problem(cs: List[Constraint[_]]) {
       case Some(p) => 
         p.reduce match {
           case Some(p) => 
-            Problem(p.realShadow.toList).hasIntSolutions
+            p.realShadow.hasIntSolutions
           case None => false
         }
       case None => false
@@ -544,13 +542,15 @@ case class Problem(cs: List[Constraint[_]]) {
    * and obtain a new constraint set called real shadow.
    * See section 2.3.1 of paper The Omega Test in CACM.
    */
-  def realShadow(): mutable.Set[Constraint[_]] = {
+  def realShadow(): Problem = { Problem(realShadowSet.toList) }
+
+  def realShadowSet(): mutable.Set[Constraint[_]] = {
     val x = chooseVar()
     println(s"real shadow chooses var: $x")
-    realShadow(x)
+    realShadowSet(x)
   }
   
-  def realShadow(x: String): mutable.Set[Constraint[_]] = {
+  def realShadowSet(x: String): mutable.Set[Constraint[_]] = {
     /* This phrase should after equality elimination */
     assert(getEqs.isEmpty)
     
@@ -583,15 +583,17 @@ case class Problem(cs: List[Constraint[_]]) {
     x
   }
 
-  def darkShadow(): mutable.Set[Constraint[_]] = {
+  def darkShadow(): Problem = { Problem(darkShadowSet.toList) }
+
+  def darkShadowSet(): mutable.Set[Constraint[_]] = {
     var x = chooseVarMinCoef()
     println(s"dark shadow chooses var: $x")
-    darkShadow(x)
+    darkShadowSet(x)
   }
   
   /* Perform a variant Fourier-Motzkin variable elimination.
    */
-  def darkShadow(x: String): mutable.Set[Constraint[_]] = {
+  def darkShadowSet(x: String): mutable.Set[Constraint[_]] = {
     /* This phrase should after equality elimination */
     assert(getEqs.isEmpty)
 
@@ -749,5 +751,19 @@ object Main extends App {
                         GEQ(List(-1, 1), List(const, "x")),           // -1 + x >= 0
                         GEQ(List(-1, 1), List(const, "y"))))          // -1 + y >= 0
   println(p6.hasIntSolutions) //false
+
+  ///////////////////////////////
+
+  println(GEQ(List(10, -1, 5), List(const, "x", "y"))
+          .tightJoin(GEQ(List(-12, 1, 8), List(const, "x", "y")), "x"))
+  println(GEQ(List(-12, 1, 8), List(const, "x", "y"))
+          .tightJoin(GEQ(List(10, -1, 5), List(const, "x", "y")), "x"))
+  
+  val p7 = Problem(List(GEQ(List(10, -1, 5), List(const, "x", "y")),
+                        GEQ(List(-12, 1, 8), List(const, "x", "y"))))
+
+  assert(p7.realShadowSet("x") == p7.darkShadowSet("x"))
+  println(p7.realShadowSet("x"))
+  println(p7.darkShadowSet("x"))
 }
 

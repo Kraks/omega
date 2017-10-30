@@ -137,7 +137,6 @@ trait Constraint[C <: Constraint[C]] {
     val newVars = removeByIdx(vars, idx)
     (newCoefs, newVars)
   }
-
   
   //TODO: better rename this function
   def _subst(x: String, term: (List[Int], List[String])): (List[Int], List[String]) = {
@@ -151,7 +150,7 @@ trait Constraint[C <: Constraint[C]] {
     reorder(oldCoefs++newCoefs, oldVars++newVars)
   }
   
-  /* Finds the minimum absolute value of coefficient.
+  /* Finds the minimum absolute value of coefficient, except the constant term.
    * Returns ((value, var) index).
    */
   def minCoef(): ((Int, String), Int) = { 
@@ -185,6 +184,9 @@ case class EQ(coefficients: List[Int], vars: List[String]) extends Constraint[EQ
   
   override def toString(): String = { toStringPartially() + " = 0" }
 
+  /* Decides whether an inequality trivially holds, i.e., not variable involves,
+   * and constant term is equal than 0.
+   */
   def trivial: Boolean = {
     vars.length == 1 && coefficients.length == 1 && coefficients.head == 0
   }

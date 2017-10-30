@@ -333,10 +333,10 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
     
     //TODO verify this part
     val (newCoefs, newVars) = if (thatXCoef < 0 && thisXCoef > 0) {
-      /* this is an upper bound; that is a lower bound */
+      /* this is an lower bound; that is a upper bound */
       reorder(scale(thisCoefs, -1*thatXCoef)++scale(thatCoefs, thisXCoef), thisVars++thatVars)
     } else if (thisXCoef < 0 && thatXCoef > 0) {
-      /* this is a lower bound; that is an upper bound */
+      /* this is a upper bound; that is an lower bound */
       reorder(scale(thisCoefs, thatXCoef)++scale(thatCoefs, -1*thisXCoef), thisVars++thatVars)
     } else return None
     
@@ -356,10 +356,10 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
 
     val m = (thisXCoef - 1) * (thatXCoef - 1)
     val (newCoefs, newVars) = if (thatXCoef < 0 && thisXCoef > 0) {
-      /* this is a lower bound; that is an upper bound */
+      /* this is a upper bound; that is an lower bound */
       reorder(m::scale(thisCoefs, -1*thatXCoef)++scale(thatCoefs, thisXCoef), const::thisVars++thatVars)
     } else if (thisXCoef < 0 && thatXCoef > 0) {
-      /* this is an upper bound; that is a lower bound */
+      /* this is an lower bound; that is a upper bound */
       reorder((-m)::scale(thisCoefs, thatXCoef)++scale(thatCoefs, -1*thisXCoef), const::thisVars++thatVars)
     } else return None
     
@@ -554,6 +554,8 @@ case class Problem(cs: List[Constraint[_]]) {
                   if (Problem(EQ(newCoefs, newVars)::p.cs).hasIntSolutions) return true
                 }
               }
+              // TODO: There is another step desribed in conference paper but not in journal paper,
+              //       it is may not necessay, but need to carefully think about it
               false
             }
           case None => false

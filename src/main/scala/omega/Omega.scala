@@ -51,6 +51,11 @@ object Utils {
     if (a % b > b / 2) a % b
     else (a % b) - b
   }
+  
+}
+
+object Constraint {
+  val const = "_"
 
   def removeByIdx[T](lst: List[T], idx: Int): List[T] = {
     lst.take(idx) ++ lst.drop(idx+1)
@@ -61,11 +66,6 @@ object Utils {
       case ((minv,mini), (x,i)) => if (ordering.lt(x,minv)) (x,i) else (minv, mini)
     })
   }
-  
-}
-
-object Constraint {
-  val const = "_"
 
   def removeZeroCoef(coefs: List[Int], vars: List[String]): (List[Int], List[String]) = {
     val cvpairs = for ((c, v) <- (coefs zip vars) if !(c == 0 && v != const)) yield (c, v)

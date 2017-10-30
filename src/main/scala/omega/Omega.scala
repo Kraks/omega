@@ -125,14 +125,15 @@ trait Constraint[C <: Constraint[C]] {
     (cvpairs.map(_._1), cvpairs.map(_._2))
   }
   
-  /* Combines like terms and reorder the variables alphabetically.
+  /* Combines like terms and reorder the variables alphabetically, also
+   * removes variables whose coefficient is zero.
    * The constant term placed at the first position.
    */
   def reorder(coefficients: List[Int], vars: List[String]): (List[Int], List[String]) = {
     val g = (coefficients zip vars).groupBy(_._2).values.map({
       cvs => cvs.reduce((acc, cv) => (acc._1 + cv._1, cv._2))
     }).toList.sortWith(_._2 < _._2)
-    (g.map(_._1), g.map(_._2))
+    removeZeroCoef(g.map(_._1), g.map(_._2))
   }
 
   def scale(coefficients: List[Int], x: Int): List[Int] = { coefficients.map(_ * x) }
@@ -233,6 +234,7 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
    */
   override def normalize(): Option[GEQ] = {
     val g = gcd(coefficients.tail)
+    println(s"g $g, ${coefficients.tail}")
     val coefs = if (coefficients.head % g == 0) { coefficients.map(_ / g) }
     else {
       //val a0 = coefficients.head / g
@@ -326,7 +328,8 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
     val thatXCoef = that.getCoefficientByVar(x)
     
     assert(thisXCoef != 0 && thatXCoef != 0)
-
+    
+    //TODO verify this part
     val (newCoefs, newVars) = if (thatXCoef < 0 && thisXCoef > 0) {
       /* this is an upper bound; that is a lower bound */
       reorder(scale(thisCoefs, -1*thatXCoef)++scale(thatCoefs, thisXCoef), thisVars++thatVars)
@@ -334,7 +337,7 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
       /* this is a lower bound; that is an upper bound */
       reorder(scale(thisCoefs, thatXCoef)++scale(thatCoefs, -1*thisXCoef), thisVars++thatVars)
     } else return None
-
+    
     Some(GEQ(newCoefs, newVars))
   }
 
@@ -514,15 +517,15 @@ case class Problem(cs: List[Constraint[_]]) {
       case Some(p) => 
         p.reduce match {
           case Some(p) =>
-            val realSet = p.realShadowSet
-            val darkSet = p.darkShadowSet
-            if (realSet == darkSet) { p.realShadow.hasIntSolutions }
-            else if (!p.realShadow.hasIntSolutions) false
-            else if (p.darkShadow.hasIntSolutions) true
+            val x = chooseVar()
+            val realSet = p.realShadowSet(x)
+            val darkSet = p.darkShadowSet(x)
+            if (realSet == darkSet) { Problem(realSet.toList).hasIntSolutions }
+            else if (!Problem(realSet.toList).hasIntSolutions) false
+            else if (Problem(darkSet.toList).hasIntSolutions) true
             else {
               /* real shadow has int solution; but dark shadow does not */
               ???
-              
             }
           case None => false
         }
@@ -569,7 +572,7 @@ case class Problem(cs: List[Constraint[_]]) {
       ineq1.join(ineq2, x) match {
         case Some(ineq) if ineq.trivial => /* trivially holds, no need to add to new constraints */
         case Some(ineq) => 
-          println(s"real shadow eliminating $ineq1, $ineq2 => $ineq")
+          println(s"real shadow eliminating [$x] $ineq1, $ineq2 => $ineq")
           cons += ineq
         case None => 
           /* In this case, ineq1 and ineq2 are not an upper/lower bound pair,
@@ -578,8 +581,7 @@ case class Problem(cs: List[Constraint[_]]) {
            */
       }
     }
-
-    assert(cons.size < getGeqs.size)
+    println(s"${cons.size}, ${getGeqs.size}")
     cons
   }
 
@@ -612,13 +614,12 @@ case class Problem(cs: List[Constraint[_]]) {
       ineq1.tightJoin(ineq2, x) match {
         case Some(ineq) if ineq.trivial =>
         case Some(ineq) =>
-          println(s"dark shadow eliminating $ineq1, $ineq2 => $ineq")
+          println(s"dark shadow eliminating [$x] $ineq1, $ineq2 => $ineq")
           cons += ineq
         case None =>
       }
     }
     
-    assert(cons.size < getGeqs.size)
     cons
   }
   
@@ -678,6 +679,7 @@ object Main extends App {
 
   val eq3 = EQ(List(-17, 7, 12, 31), List(const, "x", "y", "z"))
   val eq4 = EQ(List(-7,  3, 5,  14), List(const, "x", "y", "z"))
+
   val p2 = Problem(List(eq3, eq4)).normalize.get
   println(p2)
   val p2elim = p2.elimEQs
@@ -777,5 +779,11 @@ object Main extends App {
   assert(p7.realShadowSet("x") == p7.darkShadowSet("x"))
   println(p7.realShadowSet("x"))
   println(p7.darkShadowSet("x"))
+
+  val p8 = Problem(List(GEQ(List(45, -11, -13), List(const, "x", "y")),
+                        GEQ(List(-27, 11, 13), List(const, "x", "y")),
+                        GEQ(List(4, -7, 9), List(const, "x", "y")),
+                        GEQ(List(10, 7, -9), List(const, "x", "y"))))
+  p8.hasIntSolutions
 }
 

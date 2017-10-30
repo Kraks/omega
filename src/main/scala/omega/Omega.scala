@@ -66,6 +66,25 @@ object Utils {
 
 object Constraint {
   val const = "_"
+
+  def removeZeroCoef(coefs: List[Int], vars: List[String]): (List[Int], List[String]) = {
+    val cvpairs = for ((c, v) <- (coefs zip vars) if !(c == 0 && v != const)) yield (c, v)
+    // TODO: may refactor this to only use one pass
+    (cvpairs.map(_._1), cvpairs.map(_._2))
+  }
+
+  /* Combines like terms and reorder the variables alphabetically, also
+   * removes variables whose coefficient is zero.
+   * The constant term placed at the first position.
+   */
+  def reorder(coefficients: List[Int], vars: List[String]): (List[Int], List[String]) = {
+    val g = (coefficients zip vars).groupBy(_._2).values.map({
+      cvs => cvs.reduce((acc, cv) => (acc._1 + cv._1, cv._2))
+    }).toList.sortWith(_._2 < _._2)
+    removeZeroCoef(g.map(_._1), g.map(_._2))
+  }
+
+  def scale(coefficients: List[Int], x: Int): List[Int] = { coefficients.map(_ * x) }
 }
 
 import Utils._
@@ -119,24 +138,6 @@ trait Constraint[C <: Constraint[C]] {
     (newCoefs, newVars)
   }
 
-  def removeZeroCoef(coefs: List[Int], vars: List[String]): (List[Int], List[String]) = {
-    val cvpairs = for ((c, v) <- (coefs zip vars) if !(c == 0 && v != const)) yield (c, v)
-    // TODO: may refactor this to only use one pass
-    (cvpairs.map(_._1), cvpairs.map(_._2))
-  }
-  
-  /* Combines like terms and reorder the variables alphabetically, also
-   * removes variables whose coefficient is zero.
-   * The constant term placed at the first position.
-   */
-  def reorder(coefficients: List[Int], vars: List[String]): (List[Int], List[String]) = {
-    val g = (coefficients zip vars).groupBy(_._2).values.map({
-      cvs => cvs.reduce((acc, cv) => (acc._1 + cv._1, cv._2))
-    }).toList.sortWith(_._2 < _._2)
-    removeZeroCoef(g.map(_._1), g.map(_._2))
-  }
-
-  def scale(coefficients: List[Int], x: Int): List[Int] = { coefficients.map(_ * x) }
   
   //TODO: better rename this function
   def _subst(x: String, term: (List[Int], List[String])): (List[Int], List[String]) = {
@@ -234,7 +235,6 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
    */
   override def normalize(): Option[GEQ] = {
     val g = gcd(coefficients.tail)
-    println(s"g $g, ${coefficients.tail}")
     val coefs = if (coefficients.head % g == 0) { coefficients.map(_ / g) }
     else {
       //val a0 = coefficients.head / g
@@ -363,6 +363,18 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
     
     Some(GEQ(newCoefs, newVars))
   }
+
+  def isLowerBound(x: String): Boolean = {
+    val c = getCoefficientByVar(x)
+    assert(c != 0)
+    containsVar(x) && c > 0
+  }
+
+  def isUpperBound(x: String): Boolean = {
+    val c = getCoefficientByVar(x)
+    assert(c != 0)
+    containsVar(x) && c < 0
+  }
 }
 
 object Problem {
@@ -378,11 +390,13 @@ object Problem {
 
 case class Problem(cs: List[Constraint[_]]) {
   import Problem._
-
+  
+  //TODO: refactor this new variable generator
   def generateNewVar(): String = {
     val oldIdx = varIdx
     varIdx += 1
-    greeks(oldIdx)
+    if (varIdx == greeks.size) { varIdx = 0 }
+    greeks(oldIdx) + Random.nextInt(1000)
   }
 
   val (eqs, geqs) = partition(cs)
@@ -501,18 +515,16 @@ case class Problem(cs: List[Constraint[_]]) {
 
   def allTrivial(): Boolean = cs.foldLeft(true)((b, c) => b && c.trivial)
 
+  def upperBounds(x: String) = { getGeqs.filter(_.isUpperBound(x)) }
+
+  def lowerBounds(x: String) = { getGeqs.filter(_.isLowerBound(x)) }
+
   def hasIntSolutions(): Boolean = {
-    //TODO: do we need to call normalize on every iteration?
     normalize match {
       case Some(p) if p.cs.isEmpty => true
       case Some(p) if p.hasMostOneVar => 
-        if (p.numVars == 1) {
-          println(s"only one variable left: ${p.getVars.head}")
-          true
-        } else {
-          assert(p.cs.size == 1)
-          p.allTrivial
-        }
+        println(s"only one variable left: ${p.getVars.head}")
+        return p.reduce.nonEmpty
       case Some(p) if p.hasEq => p.elimEQs.hasIntSolutions
       case Some(p) => 
         p.reduce match {
@@ -520,12 +532,24 @@ case class Problem(cs: List[Constraint[_]]) {
             val x = chooseVar()
             val realSet = p.realShadowSet(x)
             val darkSet = p.darkShadowSet(x)
-            if (realSet == darkSet) { Problem(realSet.toList).hasIntSolutions }
-            else if (!Problem(realSet.toList).hasIntSolutions) false
-            else if (Problem(darkSet.toList).hasIntSolutions) true
+            if (realSet == darkSet) { Problem(realSet.toList).hasIntSolutions } // exact elimination
+            else if (!Problem(realSet.toList).hasIntSolutions) false            
+            else if (Problem(darkSet.toList).hasIntSolutions) true              // inexact elimination
             else {
               /* real shadow has int solution; but dark shadow does not */
-              ???
+              // m is the most negative coefficient of x
+              val m = (for (c <- cs if c.containsVar(x)) yield {
+                c.getCoefficientByVar(x)
+              }).sorted.head 
+              //for each lower bound of x
+              for (lb <- lowerBounds(x)) {
+                val coefx = lb.getCoefficientByVar(x)
+                for (j <- 0 to (floor(abs(m * coefx) - abs(m) - coefx) / abs(m)).toInt) {
+                  val (newCoefs, newVars) = reorder((-1*j)::lb.coefficients, const::lb.vars)
+                  if (Problem(EQ(newCoefs, newVars)::p.cs).hasIntSolutions) return true
+                }
+              }
+              false
             }
           case None => false
         }
@@ -543,6 +567,7 @@ case class Problem(cs: List[Constraint[_]]) {
   /* We choose the variable that minimizes the number of constraints
    * resulting from the combination of upper and lower bounds, which
    * is the variable who has minimum frequency.
+   * Used for getting real shadow.
    */
   private def chooseVar(): String = {
     cs.map(_.getVars).flatten.groupBy(x=>x).toSeq.sortBy(_._2.length).head._1
@@ -581,7 +606,7 @@ case class Problem(cs: List[Constraint[_]]) {
            */
       }
     }
-    println(s"${cons.size}, ${getGeqs.size}")
+    //println(s"${cons.size}, ${getGeqs.size}")
     cons
   }
 
@@ -623,31 +648,6 @@ case class Problem(cs: List[Constraint[_]]) {
     cons
   }
   
-  /* TODO: consider to remove this */
-  def mergeTightIneqs(): Problem = {
-    /* This phrase should after equality elimination */
-    assert(getEqs.isEmpty)
-
-    def merge(geqs: List[GEQ], acc: List[Constraint[_]]): List[Constraint[_]] = {
-      if (geqs.isEmpty) acc
-      else {
-        val geq = geqs.head
-        for ((other,idx) <- geqs.tail.zipWithIndex) {
-          geq.tighten(other) match {
-            case Some(c) => 
-              println(s"tighten: $geq, $other => $c")
-              //println(s"removed: ${removeByIdx(geqs.tail, idx)}")
-              return merge(removeByIdx(geqs.tail, idx), c::acc)
-            case None => 
-          }
-        }
-        merge(geqs.tail, geqs.head::acc)
-      }
-    }
-
-    Problem(merge(getGeqs, List()))
-  }
-
 }
 
 object Main extends App {
@@ -779,11 +779,25 @@ object Main extends App {
   assert(p7.realShadowSet("x") == p7.darkShadowSet("x"))
   println(p7.realShadowSet("x"))
   println(p7.darkShadowSet("x"))
-
-  val p8 = Problem(List(GEQ(List(45, -11, -13), List(const, "x", "y")),
+  
+  /* a <> b can be transformed to a >= b + 1 /\ a <= b -1 */
+  /* 1 + 2m <> 2n */
+  val p8 = Problem(List(GEQ(List(0, 2, -2), List(const, "m", "n")),
+                        GEQ(List(-2, -2, 2), List(const, "m", "n"))))
+  val p8ans = p8.hasIntSolutions
+  assert(!p8ans)
+  println(s"p8 has integer solutions: ${p8ans}")
+  
+  println("an omega test nightmare")
+  val p9 = Problem(List(GEQ(List(45, -11, -13), List(const, "x", "y")),
                         GEQ(List(-27, 11, 13), List(const, "x", "y")),
                         GEQ(List(4, -7, 9), List(const, "x", "y")),
                         GEQ(List(10, 7, -9), List(const, "x", "y"))))
-  p8.hasIntSolutions
+  val t0 = System.nanoTime()
+  val p9ans = p9.hasIntSolutions
+  val t1 = System.nanoTime()
+
+  assert(!p9ans)
+  println(s"p9 has integer solution: ${p9ans}. time: ${(t1-t0)/1000000000.0}")
 }
 

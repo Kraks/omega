@@ -227,12 +227,11 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
   override def toString(): String = { toStringPartially() + " >= 0" }
 
   /* Normalize the coefficients, which makes the gcd of coefficients 
-   * is 1.If the constant term a_0 can not be evenly divided by g,
+   * is 1. If the constant term a_0 can not be evenly divided by g,
    * then take floors of a_0/g, which tightens the inequality.
    * Also remove items whose coefficient is 0.
    */
   override def normalize(): Option[GEQ] = {
-    //TODO: may need to review this
     val g = gcd(coefficients.tail)
     val coefs = if (coefficients.head % g == 0) { coefficients.map(_ / g) }
     else {
@@ -263,7 +262,6 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
   def contraWith(that: GEQ): Boolean = {
     assert(noZeroCoef && that.noZeroCoef)
 
-    //TODO: check zero coefs, zero ceofs should be eliminated before
     val thisConst = coefficients.head
     val thatConst = that.coefficients.head
     val coefss = coefficients.tail zip that.coefficients.tail
@@ -398,8 +396,8 @@ case class Problem(cs: List[Constraint[_]]) {
 
   def hasMostOneVar = cs.map(_.getVars).flatten.toList.size <= 1
 
-  // TODO: refactor containsVar using geq.containsVar/eq.containsVar
-  def containsVar(x: String): Boolean = cs.map(_.getVars).flatten.contains(x)
+  def containsVar(x: String): Boolean = 
+    cs.foldLeft(false)((acc, c) => acc || c.containsVar(x))
 
   override def toString(): String = { "{ " + cs.mkString("\n  ") + " }" }
 
@@ -467,7 +465,7 @@ case class Problem(cs: List[Constraint[_]]) {
   def reduce(): Option[Problem] = {
     /* This phrase should after equality elimination */
     assert(getEqs.isEmpty)
-    assert(getGeqs.nonEmpty) //TODO: necessay?
+    assert(getGeqs.nonEmpty) //TODO: necessary?
 
     //Use Set to remove identical items
     val cons = mutable.Set[Constraint[_]]() 
@@ -626,7 +624,6 @@ case class Problem(cs: List[Constraint[_]]) {
         val geq = geqs.head
         for ((other,idx) <- geqs.tail.zipWithIndex) {
           geq.tighten(other) match {
-            // TODO: continue merging or return immediately?
             case Some(c) => 
               println(s"tighten: $geq, $other => $c")
               //println(s"removed: ${removeByIdx(geqs.tail, idx)}")

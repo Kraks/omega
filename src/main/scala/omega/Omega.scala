@@ -51,7 +51,7 @@ object Utils {
     if (a % b > b / 2) a % b
     else (a % b) - b
   }
-  
+
 }
 
 object Constraint {
@@ -831,6 +831,12 @@ object OmegaTest {
     val p8ans = p8.hasIntSolutions
     assert(!p8ans)
     println(s"p8 has integer solutions: ${p8ans}")
+    
+    val p8_1 = Problem(NEQ(List(1, 2, 2), List(const, "m", "n")).toGEQ)
+    println(s"p8_1: $p8_1")
+    val p8_1ans = p8_1.hasIntSolutions
+    assert(!p8_1ans)
+    println(s"p8_1 has integer solutions: ${p8ans}")
     
     println("an omega test nightmare")
     /* 45 - 11x - 13y >= 0

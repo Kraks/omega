@@ -379,6 +379,42 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
   }
 }
 
+case class GT(coefficients: List[Int], vars: List[String]) {
+  /* Transforms \Sigma a_i x_i > 0 to \Sigma a_i x_i >= 1
+   */
+  def toGEQ: List[GEQ] = {
+    val (newCoefs, newVars) = reorder(-1::coefficients, const::vars)
+    List(GEQ(newCoefs, newVars))
+  }
+}
+
+case class LT(coefficients: List[Int], vars: List[String]) {
+  /* Transforms \Sigma a_i x_i < 0 to \Sigma -1 * a_i x_i >= 1
+   */
+  def toGEQ: List[GEQ] = {
+    val (newCoefs, newVars) = reorder(-1::scale(coefficients, -1), const::vars)
+    List(GEQ(newCoefs, newVars))
+  }
+}
+
+case class LEQ(coefficients: List[Int], vars: List[String]) {
+  /* Transforms \Sigma a_i x_i <= 0 to \Sigma -1 * a_i x_i >= 0
+   */
+  def toGEQ: List[GEQ] = {
+    List(GEQ(scale(coefficients, -1), vars))
+  }
+}
+
+case class NEQ(coefficients: List[Int], vars: List[String]) {
+  /* Transforms \Sigma a_i x_i =/= 0 to \Sigma a_i x_i >= 1 and \Sigma a_i x_i <= -1
+   */
+  def toGEQ: List[GEQ] = {
+    val (coefs1, vars1) = reorder(-1::coefficients, const::vars)
+    val (coefs2, vars2) = reorder(-1::scale(coefficients, -1), const::vars)
+    List(GEQ(coefs1, vars1), GEQ(coefs2, vars2))
+  }
+}
+
 object Problem {
   var varIdx = 0
   val greeks = List("α", "β", "γ", "δ", "ϵ", "ζ", "η", "θ", "ι", "κ", "λ", "μ",
@@ -797,6 +833,11 @@ object OmegaTest {
     println(s"p8 has integer solutions: ${p8ans}")
     
     println("an omega test nightmare")
+    /* 45 - 11x - 13y >= 0
+     * -27 + 11x + 13y >= 0
+     *  4 + -7x + 9y >= 0
+     *  10 + 7x - 9y >= 0
+     */
     val p9 = Problem(List(GEQ(List(45, -11, -13), List(const, "x", "y")),
                           GEQ(List(-27, 11, 13), List(const, "x", "y")),
                           GEQ(List(4, -7, 9), List(const, "x", "y")),

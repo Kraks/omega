@@ -255,7 +255,6 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
     GEQ(c, v)
   }
 
-
   /* Check if two geqs are contradictory.
    * e.g.,
    * -2 + 2x + 3y >= 0,  0 - 2x - 3y >= 0 are contraWithory, but
@@ -333,10 +332,10 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
     
     //TODO verify this part
     val (newCoefs, newVars) = if (thatXCoef < 0 && thisXCoef > 0) {
-      /* this is an lower bound; that is a upper bound */
+      /* this is a lower bound; that is an upper bound */
       reorder(scale(thisCoefs, -1*thatXCoef)++scale(thatCoefs, thisXCoef), thisVars++thatVars)
     } else if (thisXCoef < 0 && thatXCoef > 0) {
-      /* this is a upper bound; that is an lower bound */
+      /* this is an upper bound; that is a lower bound */
       reorder(scale(thisCoefs, thatXCoef)++scale(thatCoefs, -1*thisXCoef), thisVars++thatVars)
     } else return None
     
@@ -356,10 +355,10 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
 
     val m = (thisXCoef - 1) * (thatXCoef - 1)
     val (newCoefs, newVars) = if (thatXCoef < 0 && thisXCoef > 0) {
-      /* this is a upper bound; that is an lower bound */
+      /* this is an upper bound; that is a lower bound */
       reorder(m::scale(thisCoefs, -1*thatXCoef)++scale(thatCoefs, thisXCoef), const::thisVars++thatVars)
     } else if (thisXCoef < 0 && thatXCoef > 0) {
-      /* this is an lower bound; that is a upper bound */
+      /* this is a lower bound; that is an upper bound */
       reorder((-m)::scale(thisCoefs, thatXCoef)++scale(thatCoefs, -1*thisXCoef), const::thisVars++thatVars)
     } else return None
     

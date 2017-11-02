@@ -52,6 +52,11 @@ object Utils {
     else (a % b) - b
   }
 
+}
+
+object Constraint {
+  val const = "_"
+
   def removeByIdx[T](lst: List[T], idx: Int): List[T] = {
     lst.take(idx) ++ lst.drop(idx+1)
   }
@@ -61,11 +66,6 @@ object Utils {
       case ((minv,mini), (x,i)) => if (ordering.lt(x,minv)) (x,i) else (minv, mini)
     })
   }
-  
-}
-
-object Constraint {
-  val const = "_"
 
   def removeZeroCoef(coefs: List[Int], vars: List[String]): (List[Int], List[String]) = {
     val cvpairs = for ((c, v) <- (coefs zip vars) if !(c == 0 && v != const)) yield (c, v)
@@ -137,7 +137,6 @@ trait Constraint[C <: Constraint[C]] {
     val newVars = removeByIdx(vars, idx)
     (newCoefs, newVars)
   }
-
   
   //TODO: better rename this function
   def _subst(x: String, term: (List[Int], List[String])): (List[Int], List[String]) = {
@@ -151,7 +150,7 @@ trait Constraint[C <: Constraint[C]] {
     reorder(oldCoefs++newCoefs, oldVars++newVars)
   }
   
-  /* Finds the minimum absolute value of coefficient.
+  /* Finds the minimum absolute value of coefficient, except the constant term.
    * Returns ((value, var) index).
    */
   def minCoef(): ((Int, String), Int) = { 
@@ -185,6 +184,9 @@ case class EQ(coefficients: List[Int], vars: List[String]) extends Constraint[EQ
   
   override def toString(): String = { toStringPartially() + " = 0" }
 
+  /* Decides whether an inequality trivially holds, i.e., not variable involves,
+   * and constant term is equal than 0.
+   */
   def trivial: Boolean = {
     vars.length == 1 && coefficients.length == 1 && coefficients.head == 0
   }
@@ -252,7 +254,6 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
     val (c, v) = _subst(x, term)
     GEQ(c, v)
   }
-
 
   /* Check if two geqs are contradictory.
    * e.g.,
@@ -331,10 +332,10 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
     
     //TODO verify this part
     val (newCoefs, newVars) = if (thatXCoef < 0 && thisXCoef > 0) {
-      /* this is an upper bound; that is a lower bound */
+      /* this is a lower bound; that is an upper bound */
       reorder(scale(thisCoefs, -1*thatXCoef)++scale(thatCoefs, thisXCoef), thisVars++thatVars)
     } else if (thisXCoef < 0 && thatXCoef > 0) {
-      /* this is a lower bound; that is an upper bound */
+      /* this is an upper bound; that is a lower bound */
       reorder(scale(thisCoefs, thatXCoef)++scale(thatCoefs, -1*thisXCoef), thisVars++thatVars)
     } else return None
     
@@ -354,10 +355,10 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
 
     val m = (thisXCoef - 1) * (thatXCoef - 1)
     val (newCoefs, newVars) = if (thatXCoef < 0 && thisXCoef > 0) {
-      /* this is a lower bound; that is an upper bound */
+      /* this is an upper bound; that is a lower bound */
       reorder(m::scale(thisCoefs, -1*thatXCoef)++scale(thatCoefs, thisXCoef), const::thisVars++thatVars)
     } else if (thisXCoef < 0 && thatXCoef > 0) {
-      /* this is an upper bound; that is a lower bound */
+      /* this is a lower bound; that is an upper bound */
       reorder((-m)::scale(thisCoefs, thatXCoef)++scale(thatCoefs, -1*thisXCoef), const::thisVars++thatVars)
     } else return None
     
@@ -374,6 +375,42 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
     val c = getCoefficientByVar(x)
     assert(c != 0)
     containsVar(x) && c < 0
+  }
+}
+
+case class GT(coefficients: List[Int], vars: List[String]) {
+  /* Transforms \Sigma a_i x_i > 0 to \Sigma a_i x_i >= 1
+   */
+  def toGEQ: List[GEQ] = {
+    val (newCoefs, newVars) = reorder(-1::coefficients, const::vars)
+    List(GEQ(newCoefs, newVars))
+  }
+}
+
+case class LT(coefficients: List[Int], vars: List[String]) {
+  /* Transforms \Sigma a_i x_i < 0 to \Sigma -1 * a_i x_i >= 1
+   */
+  def toGEQ: List[GEQ] = {
+    val (newCoefs, newVars) = reorder(-1::scale(coefficients, -1), const::vars)
+    List(GEQ(newCoefs, newVars))
+  }
+}
+
+case class LEQ(coefficients: List[Int], vars: List[String]) {
+  /* Transforms \Sigma a_i x_i <= 0 to \Sigma -1 * a_i x_i >= 0
+   */
+  def toGEQ: List[GEQ] = {
+    List(GEQ(scale(coefficients, -1), vars))
+  }
+}
+
+case class NEQ(coefficients: List[Int], vars: List[String]) {
+  /* Transforms \Sigma a_i x_i =/= 0 to \Sigma a_i x_i >= 1 and \Sigma a_i x_i <= -1
+   */
+  def toGEQ: List[GEQ] = {
+    val (coefs1, vars1) = reorder(-1::coefficients, const::vars)
+    val (coefs2, vars2) = reorder(-1::scale(coefficients, -1), const::vars)
+    List(GEQ(coefs1, vars1), GEQ(coefs2, vars2))
   }
 }
 
@@ -793,7 +830,18 @@ object OmegaTest {
     assert(!p8ans)
     println(s"p8 has integer solutions: ${p8ans}")
     
+    val p8_1 = Problem(NEQ(List(1, 2, 2), List(const, "m", "n")).toGEQ)
+    println(s"p8_1: $p8_1")
+    val p8_1ans = p8_1.hasIntSolutions
+    assert(!p8_1ans)
+    println(s"p8_1 has integer solutions: ${p8ans}")
+    
     println("an omega test nightmare")
+    /* 45 - 11x - 13y >= 0
+     * -27 + 11x + 13y >= 0
+     *  4 + -7x + 9y >= 0
+     *  10 + 7x - 9y >= 0
+     */
     val p9 = Problem(List(GEQ(List(45, -11, -13), List(const, "x", "y")),
                           GEQ(List(-27, 11, 13), List(const, "x", "y")),
                           GEQ(List(4, -7, 9), List(const, "x", "y")),

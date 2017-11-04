@@ -415,9 +415,10 @@ case class NEQ(coefficients: List[Int], vars: List[String]) {
 }
 
 object Problem {
-  var varIdx = 0
   val greeks = List("α", "β", "γ", "δ", "ϵ", "ζ", "η", "θ", "ι", "κ", "λ", "μ",
                     "ν", "ξ", "ο", "π", "ρ", "σ", "τ", "υ", "ϕ", "χ", "ψ", "ω")
+
+  var varIdx = 0
 
   def partition(cs: List[Constraint[_]]): (List[EQ], List[GEQ]) = {
     val (eqs, geqs) = cs.partition(_.isInstanceOf[EQ])
@@ -428,12 +429,17 @@ object Problem {
 case class Problem(cs: List[Constraint[_]]) {
   import Problem._
   
-  //TODO: refactor this new variable generator
   def generateNewVar(): String = {
-    val oldIdx = varIdx
+    val idx = varIdx
     varIdx += 1
-    if (varIdx == greeks.size) { varIdx = 0 }
-    greeks(oldIdx) + Random.nextInt(1000)
+
+    if (idx < greeks.length) greeks(idx)
+    else if (idx < (greeks.length * greeks.length)) {
+      val n = idx / greeks.length
+      val m = idx % greeks.length
+      greeks(n) + m
+    }
+    else { greeks(0) + idx }
   }
 
   val (eqs, geqs) = partition(cs)
@@ -857,4 +863,8 @@ object OmegaTest {
 
 object Main extends App {
   OmegaTest.test
+  val p = Problem(List())
+  for (i <- 0 to 600) {
+    println(p.generateNewVar())
+  }
 }

@@ -425,7 +425,7 @@ object Problem {
   }
 }
 
-case class Problem(cs: List[Constraint[_]]) {
+case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
   import Problem._
   
   def generateNewVar(): String = {
@@ -448,6 +448,8 @@ case class Problem(cs: List[Constraint[_]]) {
   def getGeqs = geqs
 
   def hasEq = eqs.size != 0
+
+  def hasProtectedVars = pvars.nonEmpty
 
   def getVars = cs.map(_.getVars).flatten.toSet.toList
 
@@ -862,8 +864,4 @@ object OmegaTest {
 
 object Main extends App {
   OmegaTest.test
-  val p = Problem(List())
-  for (i <- 0 to 600) {
-    println(p.generateNewVar())
-  }
 }

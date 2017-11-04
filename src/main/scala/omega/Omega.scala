@@ -415,10 +415,9 @@ case class NEQ(coefficients: List[Int], vars: List[String]) {
 }
 
 object Problem {
+  var varIdx = 0
   val greeks = List("α", "β", "γ", "δ", "ϵ", "ζ", "η", "θ", "ι", "κ", "λ", "μ",
                     "ν", "ξ", "ο", "π", "ρ", "σ", "τ", "υ", "ϕ", "χ", "ψ", "ω")
-
-  var varIdx = 0
 
   def partition(cs: List[Constraint[_]]): (List[EQ], List[GEQ]) = {
     val (eqs, geqs) = cs.partition(_.isInstanceOf[EQ])

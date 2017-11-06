@@ -963,6 +963,7 @@ object OmegaTest {
     assert(!p6ans)
     assert(p6.simplify.isEmpty)
     println(s"p6 has integer solutions: ${p6ans}")
+    println("---")
 
     ///////////////////////////////
 
@@ -986,6 +987,7 @@ object OmegaTest {
     assert(!p8ans)
     assert(p8.simplify.isEmpty)
     println(s"p8 has integer solutions: ${p8ans}")
+    println("---")
     
     val p8_1 = Problem(NEQ(List(1, 2, 2), List(const, "m", "n")).toGEQ)
     println(s"p8_1: $p8_1")
@@ -993,6 +995,7 @@ object OmegaTest {
     assert(!p8_1ans)
     assert(p8_1.simplify.isEmpty)
     println(s"p8_1 has integer solutions: ${p8ans}")
+    println("---")
     
     println("an omega test nightmare")
     /* 45 - 11x - 13y >= 0
@@ -1011,6 +1014,7 @@ object OmegaTest {
     assert(!p9ans)
     assert(p9.simplify.isEmpty)
     println(s"p9 has integer solution: ${p9ans}. time: ${(t1-t0)/1000000000.0}s")
+    println("---")
 
     val p10 = Problem(List(EQ(List(0, -1, 10, 25), List(const, "a", "b", "c")),
                           GEQ(List(-13, 1), List(const, "a"))))

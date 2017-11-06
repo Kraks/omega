@@ -553,7 +553,6 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs
   def reduce(): Option[Problem] = {
     /* This phrase should after equality elimination */
     assert(getEqs.isEmpty)
-    assert(getGeqs.nonEmpty) //TODO: necessary?
 
     //Use Set to remove identical items
     val cons = mutable.Set[Constraint[_]]() 
@@ -761,53 +760,50 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs
   def simplify(): Option[Problem] = {
     println(s"protected variables: $pvars")
     println(s"problem variables: ${getVars}")
-    if (getVars.subsetOf(pvars.toSet)) {
-      // problem involves only protected variables
-      if (hasIntSolutions) Some(this) else None
-    }
-    else {
-      normalize match {
-        case Some(p) if p.cs.isEmpty => Some(p)
-        case Some(p) if p.hasMostOneVar => 
-          println(s"only one variable left: ${p.getVars.head}")
-          if (p.reduce.nonEmpty) Some(p) else None
-        case Some(p) if p.hasEq => p.elimEQs.simplify
-        case Some(p) => 
-          p.reduce match {
-            case Some(p) =>
-              val x0 = chooseVar()
-              val realSet = p.realShadowSet(x0)
-              val darkSet = p.darkShadowSet(x0)
-              if (realSet == darkSet) { copy(realSet.toList).simplify } // exact elimination
-              else if (copy(realSet.toList).simplify.isEmpty) None
-              else {
-                val pd = copy(darkSet.toList).simplify
-                if (pd.nonEmpty) pd
-                else {
-                  /* real shadow has int solution; but dark shadow does not */
-                  val x = chooseVarMinCoef()
-                  /* m is the most negative coefficient of x */
-                  val m = (for (c <- cs if c.containsVar(x)) yield {
-                    c.getCoefficientByVar(x)
-                  }).sorted.head 
 
-                  for (lb <- lowerBounds(x)) {
-                    val coefx = lb.getCoefficientByVar(x)
-                    val j = (floor(abs(m * coefx) - abs(m) - coefx) / abs(m)).toInt
-                    println(s"### x: $x m: $m, j: $j, coefx: $coefx ###")
-                    for (j <- 0 to j) {
-                      val (newCoefs, newVars) = reorder((-1*j)::lb.coefficients, const::lb.vars)
-                      val newP = copy(EQ(newCoefs, newVars)::p.cs).simplify
-                      if (newP.nonEmpty) return newP
-                    }
+    normalize match {
+      case Some(p) if p.getVars.subsetOf(p.pvars.toSet) =>
+        if (p.hasIntSolutions) Some(p) else None
+      case Some(p) if p.cs.isEmpty => Some(p)
+      case Some(p) if p.hasMostOneVar => 
+        println(s"only one variable left: ${p.getVars.head}")
+        if (p.reduce.nonEmpty) Some(p) else None
+      case Some(p) if p.hasEq => p.elimEQs.simplify
+      case Some(p) => 
+        p.reduce match {
+          case Some(p) =>
+            val x0 = chooseVar()
+            val realSet = p.realShadowSet(x0)
+            val darkSet = p.darkShadowSet(x0)
+            if (realSet == darkSet) { copy(realSet.toList).simplify } // exact elimination
+            else if (copy(realSet.toList).simplify.isEmpty) None
+            else {
+              val pd = copy(darkSet.toList).simplify
+              if (pd.nonEmpty) pd
+              else {
+                /* real shadow has int solution; but dark shadow does not */
+                val x = chooseVarMinCoef()
+                /* m is the most negative coefficient of x */
+                val m = (for (c <- cs if c.containsVar(x)) yield {
+                  c.getCoefficientByVar(x)
+                }).sorted.head 
+
+                for (lb <- lowerBounds(x)) {
+                  val coefx = lb.getCoefficientByVar(x)
+                  val j = (floor(abs(m * coefx) - abs(m) - coefx) / abs(m)).toInt
+                  println(s"### x: $x m: $m, j: $j, coefx: $coefx ###")
+                  for (j <- 0 to j) {
+                    val (newCoefs, newVars) = reorder((-1*j)::lb.coefficients, const::lb.vars)
+                    val newP = copy(EQ(newCoefs, newVars)::p.cs).simplify
+                    if (newP.nonEmpty) return newP
                   }
-                  None
                 }
+                None
               }
-            case None => None
-          }
-        case None => None
-      }
+            }
+          case None => None
+        }
+      case None => None
     }
   }
 
@@ -998,6 +994,7 @@ object OmegaTest {
     assert(p10ans)
     println("---")
     println(p10.simplify(List("a")))
+    println("---")
     println(p10.simplify(List("a", "b")))
   }
 }

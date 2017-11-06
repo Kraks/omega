@@ -560,9 +560,8 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
             }
           }
           else {
-            val ((ak, xk), idx) = eq.minCoefUnprotected(pvars)
-            val m = abs(ak) + 1
-            val modCoefs = eq.coefficients.map(mod_hat2(_, m))
+            println(s"g $g")
+            val modCoefs = eq.coefficients.head::eq.coefficients.tail.map(mod_hat2(_, g))
             val newVar = generateNewVar
             val (newCoefs, newVars) = reorder(-1*g::modCoefs, newVar::eq.vars)
             val newEQ = EQ(newCoefs, newVars)

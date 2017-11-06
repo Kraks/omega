@@ -784,10 +784,11 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
    * returns None if the problem has no integer solutions.
    */
   def simplify(): Option[Problem] = {
-    // problem involves only protected variables
-    if (getVars == pvars.toSet) {
-      if (hasIntSolutions) Some(this)
-      else None
+    println(s"protected variables: $pvars")
+    println(s"problem variables: ${getVars}")
+    if (getVars.subsetOf(pvars.toSet)) {
+      // problem involves only protected variables
+      if (hasIntSolutions) Some(this) else None
     }
     else {
       normalize match {

@@ -506,8 +506,8 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
             case Some((x, idx)) =>
               val term = eq.getEquation(idx)
               /* Debug */
-              val substStr = EQ(term._1, term._2).toStringPartially
-              println(s"[unpVar empty] subst: $x = $substStr")
+              println(s"[g=0]choose xk: $x")
+              println(s"[g=0]subst: $x = ${EQ(term._1, term._2).toStringPartially}")
               /* Debug */
               eliminate(eqs.tail.map(_.subst(x, term)), geqs.map(_.subst(x, term)))
             case None =>
@@ -520,9 +520,8 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
               val newVars = vars ++ List(v)
               val substTerm = (newCoefs, newVars)
               /* Debug */
-              val substStr = EQ(newCoefs, newVars).toStringPartially
-              //println(s"choose ak: $ak, xk: $xk")
-              println(s"[unpVar empty] subst: $xk = $substStr")
+              println(s"[g=0]choose ak: $ak, xk: $xk")
+              println(s"[g=0]subst: $xk = ${EQ(newCoefs, newVars).toStringPartially}")
               /* Debug */
               eliminate(eq.subst(xk, substTerm).normalize.get::eqs.tail.map(_.subst(xk, substTerm)),
               geqs.map(_.subst(xk, substTerm)))
@@ -536,9 +535,8 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
               case Some((x, idx)) =>
                 val term = eq.getEquation(idx)
                 /* Debug */
-                val substStr = EQ(term._1, term._2).toStringPartially
-                println(s"choose xk: $x")
-                println(s"subst: $x = $substStr")
+                println(s"[g=1]choose xk: $x")
+                println(s"[g=1]subst: $x = ${EQ(term._1, term._2).toStringPartially}")
                 /* Debug */
                 eliminate(eqs.tail.map(_.subst(x, term)), geqs.map(_.subst(x, term)))
               case None =>
@@ -551,22 +549,20 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
                 val newVars = vars ++ List(v)
                 val substTerm = (newCoefs, newVars)
                 /* Debug */
-                val substStr = EQ(newCoefs, newVars).toStringPartially
-                println(s"choose ak: $ak, xk: $xk")
-                println(s"subst: $xk = $substStr")
+                println(s"[g=1]choose ak: $ak, xk: $xk")
+                println(s"[g=1]subst: $xk = ${EQ(newCoefs, newVars).toStringPartially}")
                 /* Debug */
                 eliminate(eq.subst(xk, substTerm).normalize.get::eqs.tail.map(_.subst(xk, substTerm)),
                 geqs.map(_.subst(xk, substTerm)))
             }
           }
           else {
-            println(s"g $g")
             val modCoefs = eq.coefficients.head::eq.coefficients.tail.map(mod_hat2(_, g))
             val newVar = generateNewVar
             val (newCoefs, newVars) = reorder(-1*g::modCoefs, newVar::eq.vars)
             val newEQ = EQ(newCoefs, newVars)
-            println(s"add new eq: $newEQ")
-            Problem(newEQ::eqs++geqs, newVar::pvars).elimEQs
+            println(s"[g=$g]add new eq: $newEQ")
+            Problem(newEQ::(eqs.tail)++geqs, newVar::pvars).elimEQs
           }
         }
       }

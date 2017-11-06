@@ -606,7 +606,7 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
 
     println(s"constraints: $cons")
     println(s"junks: $junks")
-    Some(Problem((cons -- junks).toList, pvars))
+    Some(this.copy((cons -- junks).toList))
   }
 
   def allTrivial(): Boolean = cs.foldLeft(true)((b, c) => b && c.trivial)
@@ -628,9 +628,9 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
             val x0 = chooseVar()
             val realSet = p.realShadowSet(x0)
             val darkSet = p.darkShadowSet(x0)
-            if (realSet == darkSet) { Problem(realSet.toList, pvars).hasIntSolutions } // exact elimination
-            else if (!Problem(realSet.toList, pvars).hasIntSolutions) false            
-            else if (Problem(darkSet.toList, pvars).hasIntSolutions) true       // inexact elimination
+            if (realSet == darkSet) { copy(realSet.toList).hasIntSolutions } // exact elimination
+            else if (! copy(realSet.toList).hasIntSolutions) false            
+            else if (copy(darkSet.toList).hasIntSolutions) true       // inexact elimination
             else {
               /* real shadow has int solution; but dark shadow does not */
               val x = chooseVarMinCoef()
@@ -645,7 +645,7 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
                 println(s"### x: $x m: $m, j: $j, coefx: $coefx ###")
                 for (j <- 0 to j) {
                   val (newCoefs, newVars) = reorder((-1*j)::lb.coefficients, const::lb.vars)
-                  if (Problem(EQ(newCoefs, newVars)::p.cs, pvars).hasIntSolutions) return true
+                  if (copy(EQ(newCoefs, newVars)::p.cs).hasIntSolutions) return true
                 }
               }
               // TODO: There is another step desribed in conference paper but not in journal paper,
@@ -691,7 +691,7 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
    * and obtain a new constraint set called real shadow.
    * See section 2.3.1 of paper The Omega Test in CACM.
    */
-  def realShadow(): Problem = { Problem(realShadowSet.toList, pvars) }
+  def realShadow(): Problem = { copy(realShadowSet.toList) }
 
   def realShadowSet(): mutable.Set[Constraint[_]] = {
     val x = chooseVar()
@@ -748,7 +748,7 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
     else None
   }
 
-  def darkShadow(): Problem = { Problem(darkShadowSet.toList, pvars) }
+  def darkShadow(): Problem = { copy(darkShadowSet.toList) }
 
   def darkShadowSet(): mutable.Set[Constraint[_]] = {
     var x = chooseVarMinCoef()
@@ -802,10 +802,10 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
               val x0 = chooseVar()
               val realSet = p.realShadowSet(x0)
               val darkSet = p.darkShadowSet(x0)
-              if (realSet == darkSet) { Problem(realSet.toList, pvars).simplify } // exact elimination
-              else if (Problem(realSet.toList, pvars).simplify.isEmpty) None
+              if (realSet == darkSet) { copy(realSet.toList).simplify } // exact elimination
+              else if (copy(realSet.toList).simplify.isEmpty) None
               else {
-                val pd = Problem(darkSet.toList, pvars).simplify
+                val pd = copy(darkSet.toList).simplify
                 if (pd.nonEmpty) pd
                 else {
                   /* real shadow has int solution; but dark shadow does not */
@@ -821,7 +821,7 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
                     println(s"### x: $x m: $m, j: $j, coefx: $coefx ###")
                     for (j <- 0 to j) {
                       val (newCoefs, newVars) = reorder((-1*j)::lb.coefficients, const::lb.vars)
-                      val newP = Problem(EQ(newCoefs, newVars)::p.cs, pvars).simplify
+                      val newP = copy(EQ(newCoefs, newVars)::p.cs).simplify
                       if (newP.nonEmpty) return newP
                     }
                   }
@@ -1022,6 +1022,7 @@ object OmegaTest {
     assert(p10ans)
     println("---")
     println(p10.simplify(List("a")))
+    println(p10.simplify(List("a", "b")))
   }
 }
 

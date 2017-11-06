@@ -62,6 +62,7 @@ object Constraint {
   }
 
   def minWithIndex[T](lst: List[T])(implicit ordering: Ordering[T]): (T,Int) = {
+    assert(lst.nonEmpty)
     lst.zipWithIndex.reduce[(T,Int)]({
       case ((minv,mini), (x,i)) => if (ordering.lt(x,minv)) (x,i) else (minv, mini)
     })
@@ -158,6 +159,11 @@ trait Constraint[C <: Constraint[C]] {
     ((v, getVarByIdx(idx+1)), idx+1)
   }
 
+  def minCoefUnprotected(pvars: List[String]): ((Int, String), Int) = { 
+    val (v, idx) = minWithIndex(coefficients.tail.filter(!pvars.contains(_)))(Ordering.by((x:Int) => abs(x)))
+    ((v, getVarByIdx(idx+1)), idx+1)
+  }
+
   def noZeroCoef(): Boolean = { !coefficients.tail.contains(0) }
 }
 
@@ -191,15 +197,19 @@ case class EQ(coefficients: List[Int], vars: List[String]) extends Constraint[EQ
     vars.length == 1 && coefficients.length == 1 && coefficients.head == 0
   }
   
-  /* Get the first atomic variable. 
+  /* Get the first atomic variable.
    * An atmoic variable has coefficient of 1 or -1.
    * Returns (index, var)
    */
-  def getFirstAtomicVar(): Option[(String, Int)] = {
+  def getAtomicVar(pvars: List[String] = List()): Option[(String, Int)] = {
     for (((c,x), idx) <- (coefficients.tail zip vars.tail).zipWithIndex) {
-      if (abs(c) == 1) return Some((x, idx+1))
+      if (abs(c) == 1 && !pvars.contains(x)) return Some((x, idx+1))
     }
     return None
+  }
+
+  def getUnprotectedVars(pvars: List[String]): List[(Int, String)] = {
+    (coefficients.tail zip vars.tail).filter({ case cv: (Int, String) => !pvars.contains(cv._2) })
   }
 
   /* Get the equation for an atomic variable x_k,
@@ -330,7 +340,6 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
     
     assert(thisXCoef != 0 && thatXCoef != 0)
     
-    //TODO verify this part
     val (newCoefs, newVars) = if (thatXCoef < 0 && thisXCoef > 0) {
       /* this is a lower bound; that is an upper bound */
       reorder(scale(thisCoefs, -1*thatXCoef)++scale(thatCoefs, thisXCoef), thisVars++thatVars)
@@ -423,11 +432,7 @@ object Problem {
     val (eqs, geqs) = cs.partition(_.isInstanceOf[EQ])
     (eqs.asInstanceOf[List[EQ]], geqs.asInstanceOf[List[GEQ]])
   }
-}
 
-case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
-  import Problem._
-  
   def generateNewVar(): String = {
     val idx = varIdx
     varIdx += 1
@@ -441,6 +446,11 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
     else { greeks(0) + idx }
   }
 
+}
+
+case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
+  import Problem._
+  
   val (eqs, geqs) = partition(cs)
 
   def getEqs= eqs
@@ -451,7 +461,7 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
 
   def hasProtectedVars = pvars.nonEmpty
 
-  def getVars = cs.map(_.getVars).flatten.toSet.toList
+  def getVars: Set[String] = cs.map(_.getVars).flatten.toSet
 
   val numVars = cs.map(_.getVars).flatten.toList.size
 
@@ -471,53 +481,100 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
         case None => return None
         case Some(cn) => cn
       }
-    Some(Problem(newCs))
+    Some(Problem(newCs, pvars))
   }
   
   /* Elminates the equalities in the problem, returns a new problem that
    * not contains equalities.
    */
   def elimEQs(): Problem = {
-    def eliminate(eqs: List[EQ], geqs: List[GEQ]): List[GEQ] = {
+
+    def eliminate(eqs: List[EQ], geqs: List[GEQ]): Problem = {
       if (eqs.nonEmpty) {
         val eq = eqs.head
-
         println("current constraints:")
         for (eq <- (eqs++geqs)) { println(s"  $eq") }
 
-        eq.getFirstAtomicVar match {
-          case None =>
-            val ((ak, xk), idx) = eq.minCoef
-            val sign_ak = sign(ak)
+        val unpVars = eq.getUnprotectedVars(pvars)
+        println(s"unprotected vars: $unpVars")
+        if (unpVars.isEmpty) {
+          /* There is no unprotected variables in this equality, but we 
+           * have to eliminate the equality anyway, go to the None case. 
+           * Just eliminate as normal, but need to record the substitution. TODO
+           */
+          eq.getAtomicVar() match {
+            case Some((x, idx)) =>
+              val term = eq.getEquation(idx)
+              /* Debug */
+              val substStr = EQ(term._1, term._2).toStringPartially
+              println(s"[unpVar empty] subst: $x = $substStr")
+              /* Debug */
+              eliminate(eqs.tail.map(_.subst(x, term)), geqs.map(_.subst(x, term)))
+            case None =>
+              val ((ak, xk), idx) = eq.minCoef
+              val sign_ak = sign(ak)
+              val m = abs(ak) + 1
+              val v = generateNewVar
+              val (coefs, vars) = eq.removeVarByIdx(idx)
+              val newCoefs = coefs.map((c: Int) => sign_ak * (mod_hat2(c, m))) ++ List(-1*sign_ak*m)
+              val newVars = vars ++ List(v)
+              val substTerm = (newCoefs, newVars)
+              /* Debug */
+              val substStr = EQ(newCoefs, newVars).toStringPartially
+              //println(s"choose ak: $ak, xk: $xk")
+              println(s"[unpVar empty] subst: $xk = $substStr")
+              /* Debug */
+              eliminate(eq.subst(xk, substTerm).normalize.get::eqs.tail.map(_.subst(xk, substTerm)),
+              geqs.map(_.subst(xk, substTerm)))
+          }
+        }
+        else {
+          val g = gcd(unpVars.map(_._1))
+          if (g == 1) {
+            /* Standard elimination on unprotected variable. */
+            eq.getAtomicVar(pvars) match {
+              case Some((x, idx)) =>
+                val term = eq.getEquation(idx)
+                /* Debug */
+                val substStr = EQ(term._1, term._2).toStringPartially
+                println(s"choose xk: $x")
+                println(s"subst: $x = $substStr")
+                /* Debug */
+                eliminate(eqs.tail.map(_.subst(x, term)), geqs.map(_.subst(x, term)))
+              case None =>
+                val ((ak, xk), idx) = eq.minCoef
+                val sign_ak = sign(ak)
+                val m = abs(ak) + 1
+                val v = generateNewVar
+                val (coefs, vars) = eq.removeVarByIdx(idx)
+                val newCoefs = coefs.map((c: Int) => sign_ak * (mod_hat2(c, m))) ++ List(-1*sign_ak*m)
+                val newVars = vars ++ List(v)
+                val substTerm = (newCoefs, newVars)
+                /* Debug */
+                val substStr = EQ(newCoefs, newVars).toStringPartially
+                println(s"choose ak: $ak, xk: $xk")
+                println(s"subst: $xk = $substStr")
+                /* Debug */
+                eliminate(eq.subst(xk, substTerm).normalize.get::eqs.tail.map(_.subst(xk, substTerm)),
+                geqs.map(_.subst(xk, substTerm)))
+            }
+          }
+          else {
+            val ((ak, xk), idx) = eq.minCoefUnprotected(pvars)
             val m = abs(ak) + 1
-            val v = generateNewVar
-            val (coefs, vars) = eq.removeVarByIdx(idx)
-            val newCoefs = coefs.map((c: Int) => sign_ak * (mod_hat2(c, m))) ++ List(-1*sign_ak*m)
-            val newVars = vars ++ List(v)
-            val substTerm = (newCoefs, newVars)
-            
-            /* Debug */
-            val substStr = EQ(newCoefs, newVars).toStringPartially
-            //println(s"choose ak: $ak, xk: $xk")
-            println(s"subst: $xk = $substStr")
-            /* Debug */
-
-            eliminate(eq.subst(xk, substTerm).normalize.get::eqs.tail.map(_.subst(xk, substTerm)),
-                      geqs.map(_.subst(xk, substTerm)))
-
-          case Some((x, idx)) =>
-            val term = eq.getEquation(idx)
-            /* Debug */
-            val substStr = EQ(term._1, term._2).toStringPartially
-            println(s"subst: $x = $substStr")
-            /* Debug */
-            
-            eliminate(eqs.tail.map(_.subst(x, term)), geqs.map(_.subst(x, term)))
+            val modCoefs = eq.coefficients.map(mod_hat2(_, m))
+            val newVar = generateNewVar
+            val (newCoefs, newVars) = reorder(-1*g::modCoefs, newVar::eq.vars)
+            val newEQ = EQ(newCoefs, newVars)
+            println(s"add new eq: $newEQ")
+            Problem(newEQ::eqs++geqs, newVar::pvars).elimEQs
+          }
         }
       }
-      else { geqs }
+      else { Problem(geqs, pvars) }
     }
-    Problem(eliminate(getEqs, getGeqs))
+
+    eliminate(getEqs, getGeqs)
   }
   
   /* Returns None if found contradictions, 
@@ -554,7 +611,7 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
 
     println(s"constraints: $cons")
     println(s"junks: $junks")
-    Some(Problem((cons -- junks).toList))
+    Some(Problem((cons -- junks).toList, pvars))
   }
 
   def allTrivial(): Boolean = cs.foldLeft(true)((b, c) => b && c.trivial)
@@ -576,13 +633,13 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
             val x0 = chooseVar()
             val realSet = p.realShadowSet(x0)
             val darkSet = p.darkShadowSet(x0)
-            if (realSet == darkSet) { Problem(realSet.toList).hasIntSolutions } // exact elimination
-            else if (!Problem(realSet.toList).hasIntSolutions) false            
-            else if (Problem(darkSet.toList).hasIntSolutions) true              // inexact elimination
+            if (realSet == darkSet) { Problem(realSet.toList, pvars).hasIntSolutions } // exact elimination
+            else if (!Problem(realSet.toList, pvars).hasIntSolutions) false            
+            else if (Problem(darkSet.toList, pvars).hasIntSolutions) true       // inexact elimination
             else {
               /* real shadow has int solution; but dark shadow does not */
               val x = chooseVarMinCoef()
-              // m is the most negative coefficient of x
+              /* m is the most negative coefficient of x */
               val m = (for (c <- cs if c.containsVar(x)) yield {
                 c.getCoefficientByVar(x)
               }).sorted.head 
@@ -593,7 +650,7 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
                 println(s"### x: $x m: $m, j: $j, coefx: $coefx ###")
                 for (j <- 0 to j) {
                   val (newCoefs, newVars) = reorder((-1*j)::lb.coefficients, const::lb.vars)
-                  if (Problem(EQ(newCoefs, newVars)::p.cs).hasIntSolutions) return true
+                  if (Problem(EQ(newCoefs, newVars)::p.cs, pvars).hasIntSolutions) return true
                 }
               }
               // TODO: There is another step desribed in conference paper but not in journal paper,
@@ -619,14 +676,27 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
    * Used for getting real shadow.
    */
   private def chooseVar(): String = {
-    cs.map(_.getVars).flatten.groupBy(x=>x).toSeq.sortBy(_._2.length).head._1
+    val allVars = cs.map(_.getVars).flatten.groupBy(x=>x).toSeq
+                    .sortBy(_._2.length)
+    allVars.head._1
+  }
+  
+  /* Same as method chooseVar, but the variable is not contained
+   * in protected variables.
+   */
+  private def chooseUnprotectedVar(): Option[String] = {
+    val allVars = cs.map(_.getVars).flatten.groupBy(x=>x).toSeq
+                    .sortBy(_._2.length)
+                    .filter(!pvars.contains(_))
+    if (allVars.nonEmpty) Some(allVars.head._1)
+    else None
   }
 
   /* Perform a classical Fourier-Motzkin variable elimination,
    * and obtain a new constraint set called real shadow.
    * See section 2.3.1 of paper The Omega Test in CACM.
    */
-  def realShadow(): Problem = { Problem(realShadowSet.toList) }
+  def realShadow(): Problem = { Problem(realShadowSet.toList, pvars) }
 
   def realShadowSet(): mutable.Set[Constraint[_]] = {
     val x = chooseVar()
@@ -658,15 +728,32 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
     //println(s"${cons.size}, ${getGeqs.size}")
     cons
   }
-
+  
+  /* Choose the variable that has coefficient as close to zero as possible.
+   * Used for getting dark shadow.
+   */
   def chooseVarMinCoef(): String = {
-    val (((c, x), _), _) = minWithIndex(cs.map(_.minCoef))(Ordering.by({ 
-      case x: ((Int,String),Int) => abs(x._1._1) 
+    val ((c, x), _) = minWithIndex(cs.map(_.minCoef._1))(Ordering.by({ 
+      case x: (Int,String) => abs(x._1)
     }))
     x
   }
 
-  def darkShadow(): Problem = { Problem(darkShadowSet.toList) }
+  /* Same as chooseVarMinCoef, but the variable is not contained in
+   * protected variables.
+   */
+  def chooseUnprotectedVarMinCoef(): Option[String] = {
+    val coefVars = cs.map(_.minCoef._1).filter({ case cv: (Int,String) => !pvars.contains(cv._2) })
+    if (coefVars.nonEmpty) {
+      val ((c, x), _) = minWithIndex(coefVars)(Ordering.by({ 
+        case x: (Int,String) => abs(x._1)
+      }))
+      Some(x)
+    }
+    else None
+  }
+
+  def darkShadow(): Problem = { Problem(darkShadowSet.toList, pvars) }
 
   def darkShadowSet(): mutable.Set[Constraint[_]] = {
     var x = chooseVarMinCoef()
@@ -695,6 +782,66 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
     }
     
     cons
+  }
+  
+  /* Simplify the problem with protected variables, returns Some(p) 
+   * if the problem has integer solution where `p` is the simplified form;
+   * returns None if the problem has no integer solutions.
+   */
+  def simplify(): Option[Problem] = {
+    // problem involves only protected variables
+    if (getVars == pvars.toSet) {
+      if (hasIntSolutions) Some(this)
+      else None
+    }
+    else {
+      normalize match {
+        case Some(p) if p.cs.isEmpty => Some(p)
+        case Some(p) if p.hasMostOneVar => 
+          println(s"only one variable left: ${p.getVars.head}")
+          if (p.reduce.nonEmpty) Some(p) else None
+        case Some(p) if p.hasEq => p.elimEQs.simplify
+        case Some(p) => 
+          p.reduce match {
+            case Some(p) =>
+              val x0 = chooseVar()
+              val realSet = p.realShadowSet(x0)
+              val darkSet = p.darkShadowSet(x0)
+              if (realSet == darkSet) { Problem(realSet.toList, pvars).simplify } // exact elimination
+              else if (Problem(realSet.toList, pvars).simplify.isEmpty) None
+              else {
+                val pd = Problem(darkSet.toList, pvars).simplify
+                if (pd.nonEmpty) pd
+                else {
+                  /* real shadow has int solution; but dark shadow does not */
+                  val x = chooseVarMinCoef()
+                  /* m is the most negative coefficient of x */
+                  val m = (for (c <- cs if c.containsVar(x)) yield {
+                    c.getCoefficientByVar(x)
+                  }).sorted.head 
+
+                  for (lb <- lowerBounds(x)) {
+                    val coefx = lb.getCoefficientByVar(x)
+                    val j = (floor(abs(m * coefx) - abs(m) - coefx) / abs(m)).toInt
+                    println(s"### x: $x m: $m, j: $j, coefx: $coefx ###")
+                    for (j <- 0 to j) {
+                      val (newCoefs, newVars) = reorder((-1*j)::lb.coefficients, const::lb.vars)
+                      val newP = Problem(EQ(newCoefs, newVars)::p.cs, pvars).simplify
+                      if (newP.nonEmpty) return newP
+                    }
+                  }
+                  None
+                }
+              }
+            case None => None
+          }
+        case None => None
+      }
+    }
+  }
+
+  def simplify(pvars: List[String]): Option[Problem] = {
+    Problem(cs, pvars).simplify
   }
 }
 
@@ -802,17 +949,24 @@ object OmegaTest {
                           GEQ(List(15, -6, -4), List(const, "x", "y")), // 15 - 6x - 4y >= 0
                           GEQ(List(1, 1), List(const, "x")),            // 1 + x >= 0
                           GEQ(List(0, 2), List(const, "y"))))           // 0 + 2y >= 0
-
-    println(s"p5 var with min ceof: ${p5.chooseVarMinCoef}") //x
+    
+    val v = p5.chooseVarMinCoef
+    assert(v == "x")
+    println(s"p5 var with min ceof: ${v}") //x
     val p5ans = p5.hasIntSolutions
     assert(p5ans)
     println(s"p5 has integer solutions: ${p5ans}")
+
+    val p5_sim = p5.simplify(List("x"))
+    assert(p5_sim.nonEmpty)
+    println(s"p5 simplified: $p5_sim")
 
     val p6 = Problem(List(GEQ(List(4, -3, -2), List(const, "x", "y")),  // 4 - 3x - 2y >= 0
                           GEQ(List(-1, 1), List(const, "x")),           // -1 + x >= 0
                           GEQ(List(-1, 1), List(const, "y"))))          // -1 + y >= 0
     val p6ans = p6.hasIntSolutions
     assert(!p6ans)
+    assert(p6.simplify.isEmpty)
     println(s"p6 has integer solutions: ${p6ans}")
 
     ///////////////////////////////
@@ -835,12 +989,14 @@ object OmegaTest {
                           GEQ(List(-2, -2, 2), List(const, "m", "n"))))
     val p8ans = p8.hasIntSolutions
     assert(!p8ans)
+    assert(p8.simplify.isEmpty)
     println(s"p8 has integer solutions: ${p8ans}")
     
     val p8_1 = Problem(NEQ(List(1, 2, 2), List(const, "m", "n")).toGEQ)
     println(s"p8_1: $p8_1")
     val p8_1ans = p8_1.hasIntSolutions
     assert(!p8_1ans)
+    assert(p8_1.simplify.isEmpty)
     println(s"p8_1 has integer solutions: ${p8ans}")
     
     println("an omega test nightmare")
@@ -858,7 +1014,15 @@ object OmegaTest {
     val t1 = System.nanoTime()
 
     assert(!p9ans)
+    assert(p9.simplify.isEmpty)
     println(s"p9 has integer solution: ${p9ans}. time: ${(t1-t0)/1000000000.0}s")
+
+    val p10 = Problem(List(EQ(List(0, -1, 10, 25), List(const, "a", "b", "c")),
+                          GEQ(List(-13, 1), List(const, "a"))))
+    val p10ans = p10.hasIntSolutions
+    assert(p10ans)
+    println("---")
+    println(p10.simplify(List("a")))
   }
 }
 

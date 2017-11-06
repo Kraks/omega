@@ -448,7 +448,7 @@ object Problem {
 
 }
 
-case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
+case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs: Map[String, EQ] = Map()) {
   import Problem._
   
   val (eqs, geqs) = partition(cs)
@@ -488,7 +488,7 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
    * not contains equalities.
    */
   def elimEQs(): Problem = {
-
+    
     def eliminate(eqs: List[EQ], geqs: List[GEQ]): Problem = {
       if (eqs.nonEmpty) {
         val eq = eqs.head
@@ -497,17 +497,22 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
 
         val unpVars = eq.getUnprotectedVars(pvars)
         println(s"unprotected vars: $unpVars")
-        if (unpVars.isEmpty) {
-          /* There is no unprotected variables in this equality, but we 
-           * have to eliminate the equality anyway, go to the None case. 
+        
+        val g = gcd(unpVars.map(_._1))
+        
+        if (unpVars.isEmpty || g == 1) {
+          /* If unpVars is empty, there is no unprotected variables in this equality, 
+           * but we have to eliminate the equality anyway, go to the None case. 
            * Just eliminate as normal, but need to record the substitution. TODO
+           * If g == 1 then do standard elimination on an unprotected variable.
            */
-          eq.getAtomicVar() match {
+          val variable = if (unpVars.isEmpty) eq.getAtomicVar() else eq.getAtomicVar(pvars)
+          variable match {
             case Some((x, idx)) =>
               val term = eq.getEquation(idx)
               /* Debug */
-              println(s"[g=0]choose xk: $x")
-              println(s"[g=0]subst: $x = ${EQ(term._1, term._2).toStringPartially}")
+              println(s"[g=$g]choose xk: $x")
+              println(s"[g=$g]subst: $x = ${EQ(term._1, term._2).toStringPartially}")
               /* Debug */
               eliminate(eqs.tail.map(_.subst(x, term)), geqs.map(_.subst(x, term)))
             case None =>
@@ -520,50 +525,20 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List()) {
               val newVars = vars ++ List(v)
               val substTerm = (newCoefs, newVars)
               /* Debug */
-              println(s"[g=0]choose ak: $ak, xk: $xk")
-              println(s"[g=0]subst: $xk = ${EQ(newCoefs, newVars).toStringPartially}")
+              println(s"[g=$g]choose ak: $ak, xk: $xk")
+              println(s"[g=$g]subst: $xk = ${EQ(newCoefs, newVars).toStringPartially}")
               /* Debug */
               eliminate(eq.subst(xk, substTerm).normalize.get::eqs.tail.map(_.subst(xk, substTerm)),
               geqs.map(_.subst(xk, substTerm)))
           }
         }
         else {
-          val g = gcd(unpVars.map(_._1))
-          if (g == 1) {
-            /* Standard elimination on unprotected variable. */
-            eq.getAtomicVar(pvars) match {
-              case Some((x, idx)) =>
-                val term = eq.getEquation(idx)
-                /* Debug */
-                println(s"[g=1]choose xk: $x")
-                println(s"[g=1]subst: $x = ${EQ(term._1, term._2).toStringPartially}")
-                /* Debug */
-                eliminate(eqs.tail.map(_.subst(x, term)), geqs.map(_.subst(x, term)))
-              case None =>
-                val ((ak, xk), idx) = eq.minCoef
-                val sign_ak = sign(ak)
-                val m = abs(ak) + 1
-                val v = generateNewVar
-                val (coefs, vars) = eq.removeVarByIdx(idx)
-                val newCoefs = coefs.map((c: Int) => sign_ak * (mod_hat2(c, m))) ++ List(-1*sign_ak*m)
-                val newVars = vars ++ List(v)
-                val substTerm = (newCoefs, newVars)
-                /* Debug */
-                println(s"[g=1]choose ak: $ak, xk: $xk")
-                println(s"[g=1]subst: $xk = ${EQ(newCoefs, newVars).toStringPartially}")
-                /* Debug */
-                eliminate(eq.subst(xk, substTerm).normalize.get::eqs.tail.map(_.subst(xk, substTerm)),
-                geqs.map(_.subst(xk, substTerm)))
-            }
-          }
-          else {
-            val modCoefs = eq.coefficients.head::eq.coefficients.tail.map(mod_hat2(_, g))
-            val newVar = generateNewVar
-            val (newCoefs, newVars) = reorder(-1*g::modCoefs, newVar::eq.vars)
-            val newEQ = EQ(newCoefs, newVars)
-            println(s"[g=$g]add new eq: $newEQ")
-            Problem(newEQ::(eqs.tail)++geqs, newVar::pvars).elimEQs
-          }
+          val modCoefs = eq.coefficients.head::eq.coefficients.tail.map(mod_hat2(_, g))
+          val newVar = generateNewVar
+          val (newCoefs, newVars) = reorder(-1*g::modCoefs, newVar::eq.vars)
+          val newEQ = EQ(newCoefs, newVars)
+          println(s"[g=$g]add new eq: $newEQ")
+          Problem(newEQ::(eqs.tail)++geqs, newVar::pvars).elimEQs
         }
       }
       else { Problem(geqs, pvars) }

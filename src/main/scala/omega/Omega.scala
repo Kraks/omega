@@ -487,7 +487,7 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs
   /* Elminates the equalities in the problem, returns a new problem that
    * not contains equalities.
    */
-  def elimEQs(): Problem = {
+  def elimEq(): Problem = {
     
     def eliminate(eqs: List[EQ], geqs: List[GEQ]): Problem = {
       if (eqs.nonEmpty) {
@@ -538,7 +538,7 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs
           val (newCoefs, newVars) = reorder(-1*g::modCoefs, newVar::eq.vars)
           val newEQ = EQ(newCoefs, newVars)
           println(s"[g=$g]add new eq: $newEQ")
-          Problem(newEQ::(eqs.tail)++geqs, newVar::pvars).elimEQs
+          Problem(newEQ::(eqs.tail)++geqs, newVar::pvars).elimEq
         }
       }
       else { Problem(geqs, pvars) }
@@ -595,7 +595,7 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs
       case Some(p) if p.hasMostOneVar => 
         println(s"only one variable left: ${p.getVars.head}")
         return p.reduce.nonEmpty
-      case Some(p) if p.hasEq => p.elimEQs.hasIntSolutions
+      case Some(p) if p.hasEq => p.elimEq.hasIntSolutions
       case Some(p) => 
         p.reduce match {
           case Some(p) =>
@@ -768,7 +768,7 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs
       case Some(p) if p.hasMostOneVar => 
         println(s"only one variable left: ${p.getVars.head}")
         if (p.reduce.nonEmpty) Some(p) else None
-      case Some(p) if p.hasEq => p.elimEQs.simplify
+      case Some(p) if p.hasEq => p.elimEq.simplify
       case Some(p) => 
         p.reduce match {
           case Some(p) =>
@@ -835,7 +835,7 @@ object OmegaTest {
                  List("_", "b", "a"))
     val p1 = Problem(List(eq2, eq1))
     println(p1)
-    //val p1elim = p1.elimEQs
+    //val p1elim = p1.elimEq
     //println("after elimination: " + p1elim)
 
     ///////////////////////////////
@@ -845,7 +845,7 @@ object OmegaTest {
 
     val p2 = Problem(List(eq3, eq4)).normalize.get
     println(p2)
-    val p2elim = p2.elimEQs
+    val p2elim = p2.elimEq
     println(s"eq eliminated: $p2elim")
     
     val ineq1 = GEQ(List(-1, 1), List(const, "x"))
@@ -856,7 +856,7 @@ object OmegaTest {
     val p3 = Problem(List(eq3, eq4, ineq1, ineq2, ineq3, ineq4))
     println(p3)
 
-    val p3elim = p3.elimEQs.normalize.get
+    val p3elim = p3.elimEq.normalize.get
     println(s"eq eliminated:\n $p3elim")
     val p3reduced = p3elim.reduce.get
     println(s"reduced:\n $p3reduced")

@@ -460,7 +460,13 @@ object Problem {
 
 }
 
-case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs: Map[String, Term] = Map()) {
+case class Subst(x: String, term: Term) {
+  override def toString: String = {
+    x + " = " + term
+  }
+}
+
+case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs: List[Subst] = List()) {
   import Problem._
   
   val (eqs, geqs) = partition(cs)
@@ -483,7 +489,7 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs
     cs.foldLeft(false)((acc, c) => acc || c.containsVar(x))
 
   override def toString(): String = { 
-    "{ " + cs.mkString("\n  ")  + " }" 
+    "{ " + cs.mkString("\n  ")  + "\n" + substs.mkString("\n  ") + " }" 
   }
 
   /* A constraint is normalized if all coefficients are integers, and the
@@ -503,7 +509,7 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs
    */
   def elimEq(): Problem = {
     
-    def eliminate(eqs: List[EQ], geqs: List[GEQ], substs: Map[String, Term]): Problem = {
+    def eliminate(eqs: List[EQ], geqs: List[GEQ], substs: List[Subst]): Problem = {
       if (eqs.nonEmpty) {
         val eq = eqs.head
         println("current constraints:")
@@ -525,7 +531,7 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs
             case Some((x, idx)) =>
               val term = eq.getEquation(idx)
               val newSubsts = if (g == 1) {
-                substs ++ Map(x -> term)
+                Subst(x,term)::substs
               } else { substs }
               /* Debug */
               println(s"[g=$g]choose xk: $x")
@@ -543,7 +549,7 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs
               val substTerm = newTerm(newCoefs, newVars)
 
               val newSubsts = if (g == 1) {
-                substs ++ Map(xk -> substTerm)
+                Subst(xk,substTerm)::substs
               } else { substs }
 
               /* Debug */
@@ -568,7 +574,7 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs
       else { Problem(geqs, pvars, substs) }
     }
 
-    eliminate(getEqs, getGeqs, Map())
+    eliminate(getEqs, getGeqs, List())
   }
   
   /* Returns None if found contradictions, 

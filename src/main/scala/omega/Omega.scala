@@ -523,7 +523,7 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs
         if (unpVars.isEmpty || g == 1) {
           /* If unpVars is empty, there is no unprotected variables in this equality, 
            * but we have to eliminate the equality anyway, go to the None case. 
-           * Just eliminate as normal, but need to record the substitution. TODO
+           * Just eliminate as normal, but need to record the substitution.
            * If g == 1 then do standard elimination on an unprotected variable.
            */
           val variable = if (unpVars.isEmpty) eq.getAtomicVar() else eq.getAtomicVar(pvars)

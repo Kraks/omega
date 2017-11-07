@@ -521,8 +521,8 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs
         val g = if (unpVars.isEmpty) 0 else gcd(unpVars.map(_._1))
         
         if (g <= 1) {
-          /* If unpVars is empty(g == 0), there is no unprotected variables in this equality, 
-           * but we have to eliminate the equality anyway, go to the None case. 
+          /* If unpVars is empty(g == 0), there is no unprotected variables 
+           * in this equality, but we have to eliminate the equality anyway.
            * Just eliminate as normal, but need to record the substitution.
            * If g == 1 then do standard elimination on an unprotected variable.
            */

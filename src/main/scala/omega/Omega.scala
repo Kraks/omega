@@ -88,23 +88,20 @@ object Constraint {
   def scale(coefficients: List[Int], x: Int): List[Int] = { coefficients.map(_ * x) }
 }
 
-import Utils._
-import Constraint._
+object Term {
+  def newTerm(coefs: List[Int], variables: List[String]) = {
+    new Term {
+      val coefficients = coefs
+      val vars = variables
+    }
+  }
+}
 
-trait Constraint[C <: Constraint[C]] {
+trait Term {
   val coefficients: List[Int]
   val vars: List[String]
 
-  assert(coefficients.length == vars.length)
-  assert(vars(0) == const)
-
-  def normalize(): Option[Constraint[C]]
-
-  def subst(x: String, term: (List[Int], List[String])): C
-
-  def trivial: Boolean
-
-  def toStringPartially(): String = {
+  override def toString(): String = {
     val s = coefficients.head.toString
     (coefficients.tail zip vars.tail).foldLeft(s)({
       case (acc, (c,v)) => 
@@ -114,6 +111,21 @@ trait Constraint[C <: Constraint[C]] {
         acc + cvstr
     })
   }
+}
+
+import Term._
+import Utils._
+import Constraint._
+
+trait Constraint[C <: Constraint[C]] extends Term {
+  assert(coefficients.length == vars.length)
+  assert(vars(0) == const)
+
+  def normalize(): Option[Constraint[C]]
+
+  def subst(x: String, term: Term): C
+
+  def trivial: Boolean
 
   def getVars = vars.tail
 
@@ -140,14 +152,14 @@ trait Constraint[C <: Constraint[C]] {
   }
   
   //TODO: better rename this function
-  def _subst(x: String, term: (List[Int], List[String])): (List[Int], List[String]) = {
+  def _subst(x: String, term: Term): (List[Int], List[String]) = {
     if (!vars.contains(x)) {
       return (coefficients, vars)
     }
     val c = getCoefficientByVar(x)
     val (oldCoefs, oldVars) = removeVar(x)
-    val newVars = term._2
-    val newCoefs = term._1.map(_ * c)
+    val newVars = term.vars
+    val newCoefs = term.coefficients.map(_ * c)
     reorder(oldCoefs++newCoefs, oldVars++newVars)
   }
   
@@ -188,7 +200,7 @@ case class EQ(coefficients: List[Int], vars: List[String]) extends Constraint[EQ
     else None
   }
   
-  override def toString(): String = { toStringPartially() + " = 0" }
+  override def toString(): String = { super.toString + " = 0" }
 
   /* Decides whether an inequality trivially holds, i.e., not variable involves,
    * and constant term is equal than 0.
@@ -217,18 +229,18 @@ case class EQ(coefficients: List[Int], vars: List[String]) extends Constraint[EQ
    * Returns a list of integers for a_i, and a list
    * of strings for x_i.
    */
-  def getEquation(x: String): (List[Int], List[String]) = {
+  def getEquation(x: String): Term = {
     getEquation(vars.indexOf(x))
   }
 
-  def getEquation(idx: Int): (List[Int], List[String]) = {
+  def getEquation(idx: Int): Term = {
     assert(idx != 0)
     assert(abs(coefficients(idx)) == 1)
     val (coefs, vars) = removeVarByIdx(idx)
-    (coefs.map(_ * -1), vars)
+    newTerm(coefs.map(_ * -1), vars)
   }
   
-  override def subst(x: String, term: (List[Int], List[String])): EQ = {
+  override def subst(x: String, term: Term): EQ = {
     val (c, v)= _subst(x, term)
     EQ(c, v)
   }
@@ -238,7 +250,7 @@ case class EQ(coefficients: List[Int], vars: List[String]) extends Constraint[EQ
  */
 case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[GEQ] {
   
-  override def toString(): String = { toStringPartially() + " >= 0" }
+  override def toString(): String = { super.toString + " >= 0" }
 
   /* Normalize the coefficients, which makes the gcd of coefficients 
    * is 1. If the constant term a_0 can not be evenly divided by g,
@@ -260,7 +272,7 @@ case class GEQ(coefficients: List[Int], vars: List[String]) extends Constraint[G
   /* Substitute a variable with a linear term, which the term is a list
    * of integers (coefficients) and a list of strings (variables).
    */
-  override def subst(x: String, term: (List[Int], List[String])): GEQ = {
+  override def subst(x: String, term: Term): GEQ = {
     val (c, v) = _subst(x, term)
     GEQ(c, v)
   }
@@ -448,7 +460,7 @@ object Problem {
 
 }
 
-case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs: Map[String, EQ] = Map()) {
+case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs: Map[String, Term] = Map()) {
   import Problem._
   
   val (eqs, geqs) = partition(cs)
@@ -470,7 +482,9 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs
   def containsVar(x: String): Boolean = 
     cs.foldLeft(false)((acc, c) => acc || c.containsVar(x))
 
-  override def toString(): String = { "{ " + cs.mkString("\n  ") + " }" }
+  override def toString(): String = { 
+    "{ " + cs.mkString("\n  ") + " }" 
+  }
 
   /* A constraint is normalized if all coefficients are integers, and the
    * greatest common divisor of the coefficients (not including a_0) is 1.
@@ -489,7 +503,7 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs
    */
   def elimEq(): Problem = {
     
-    def eliminate(eqs: List[EQ], geqs: List[GEQ]): Problem = {
+    def eliminate(eqs: List[EQ], geqs: List[GEQ], substs: Map[String, Term]): Problem = {
       if (eqs.nonEmpty) {
         val eq = eqs.head
         println("current constraints:")
@@ -510,11 +524,14 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs
           variable match {
             case Some((x, idx)) =>
               val term = eq.getEquation(idx)
+              val newSubsts = if (g == 1) {
+                substs ++ Map(x -> term)
+              } else { substs }
               /* Debug */
               println(s"[g=$g]choose xk: $x")
-              println(s"[g=$g]subst: $x = ${EQ(term._1, term._2).toStringPartially}")
+              println(s"[g=$g]subst: $x = ${term}")
               /* Debug */
-              eliminate(eqs.tail.map(_.subst(x, term)), geqs.map(_.subst(x, term)))
+              eliminate(eqs.tail.map(_.subst(x, term)), geqs.map(_.subst(x, term)), newSubsts)
             case None =>
               val ((ak, xk), idx) = eq.minCoef
               val sign_ak = sign(ak)
@@ -523,14 +540,21 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs
               val (coefs, vars) = eq.removeVarByIdx(idx)
               val newCoefs = coefs.map((c: Int) => sign_ak * (mod_hat2(c, m))) ++ List(-1*sign_ak*m)
               val newVars = vars ++ List(v)
-              val substTerm = (newCoefs, newVars)
+              val substTerm = newTerm(newCoefs, newVars)
+
+              val newSubsts = if (g == 1) {
+                substs ++ Map(xk -> substTerm)
+              } else { substs }
+
               /* Debug */
               println(s"[g=$g]choose ak: $ak, xk: $xk")
-              println(s"[g=$g]subst: $xk = ${EQ(newCoefs, newVars).toStringPartially}")
+              println(s"[g=$g]subst: $xk = ${substTerm}")
               /* Debug */
+
               eliminate(eq.subst(xk, substTerm).normalize.get::eqs.tail.map(_.subst(xk, substTerm)),
-              geqs.map(_.subst(xk, substTerm)))
+                        geqs.map(_.subst(xk, substTerm)), newSubsts)
           }
+          
         }
         else {
           val modCoefs = eq.coefficients.head::eq.coefficients.tail.map(mod_hat2(_, g))
@@ -538,13 +562,13 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs
           val (newCoefs, newVars) = reorder(-1*g::modCoefs, newVar::eq.vars)
           val newEQ = EQ(newCoefs, newVars)
           println(s"[g=$g]add new eq: $newEQ")
-          Problem(newEQ::(eqs.tail)++geqs, newVar::pvars).elimEq
+          Problem(newEQ::(eqs.tail)++geqs, newVar::pvars, substs).elimEq
         }
       }
-      else { Problem(geqs, pvars) }
+      else { Problem(geqs, pvars, substs) }
     }
 
-    eliminate(getEqs, getGeqs)
+    eliminate(getEqs, getGeqs, Map())
   }
   
   /* Returns None if found contradictions, 

@@ -483,7 +483,7 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs
     cs.foldLeft(false)((acc, c) => acc || c.containsVar(x))
 
   override def toString(): String = { 
-    "{ " + cs.mkString("\n  ") + " }" 
+    "{ " + cs.mkString("\n  ")  + " }" 
   }
 
   /* A constraint is normalized if all coefficients are integers, and the
@@ -495,7 +495,7 @@ case class Problem(cs: List[Constraint[_]], pvars: List[String] = List(), substs
         case None => return None
         case Some(cn) => cn
       }
-    Some(Problem(newCs, pvars))
+    Some(copy(newCs))
   }
   
   /* Elminates the equalities in the problem, returns a new problem that

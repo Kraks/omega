@@ -1038,8 +1038,15 @@ object OmegaTest {
     println("---")
     println(p10.simplify(List("a", "b")))
     println("---")
+
+    assert(Problem(List(GEQ(List(-10, 1), List(const, "x")), 
+                        GEQ(List(-20, 1), List(const, "x")))).hasIntSolutions)
+
     println(Problem(List(GEQ(List(-10, 1), List(const, "x")),
                          GEQ(List(-20, 1), List(const, "x")))).simplify(List("x")))
+
+    println(Problem(List(GEQ(List(-10, 1), List(const, "x")),
+                         GEQ(List(-20, 1), List(const, "x")))).reduce)
 
     assert(Problem(List(GEQ(List(10), List(const)))).hasIntSolutions)
     assert(Problem(List(EQ(List(0), List(const)))).hasIntSolutions)

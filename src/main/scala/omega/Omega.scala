@@ -1050,6 +1050,7 @@ object OmegaTest {
 
     assert(Problem(List(GEQ(List(10), List(const)))).hasIntSolutions)
     assert(Problem(List(EQ(List(0), List(const)))).hasIntSolutions)
+    assert(!Problem(List(EQ(List(1), List(const)))).hasIntSolutions)
     assert(!Problem(List(GEQ(List(-10), List(const)))).hasIntSolutions)
   }
 }
